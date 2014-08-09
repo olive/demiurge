@@ -1,55 +1,46 @@
+{-# LANGUAGE RankNTypes #-}
 module Demiurge.Builder where
 
 import Demiurge.Data.Coordinate
 import Demiurge.World
+import Demiurge.Utils
 
 type OrderPool o = [o]
 
-manageTask :: (World w c, Order o)
-           => Builder c o
+manageTask :: (World w c, Order o, Task t)
+           => Builder c o t
            -> w
            -> OrderPool o
-           -> (Builder c o, w, OrderPool o)
-manageTask (Builder xy ord (Path (pos:ps))) w pool =
-    if (free w pos)
-    then (Builder pos ord (Path ps), w, pool)
-    else (Builder xy none None, w, ord:pool)
-manageTask (Builder xy ord (Path [])) w pool =
-    let (no, tsk) = next ord in
-    (Builder xy no tsk, w, pool)
-manageTask (Builder xy ord None) w pool =
-    let (no, tsk) = next ord in
-    (Builder xy no tsk, w, pool)
+           -> (Builder c o t, w, OrderPool o)
+manageTask b@(Builder xy ord t) w pool =
+    if allowed b w t
+    then perform b w |@| pool
+    else (Builder xy noneO noneT, w, ord:pool)
 
-data Task c = Path [c] | None
-
---class Task t where
---    perform :: World w c => w -> Builder c
+class Task t where
+    perform :: World w c
+            => Builder c o t
+            -> w
+            -> (Builder c o t, w)
+    allowed :: World w c => Builder c o t -> w -> t -> Bool
+    noneT :: t
 
 class Order o where
-    next :: o -> (o, Task c)
+    next :: Task t => o -> (o, t)
     rewind :: o
-    none :: o
+    noneO :: o
 
-data Builder c o = Builder c o (Task c)
+data Builder c o t = Builder c o t
 
-finishO :: (Coordinate c, Order o) => Builder c o -> Builder c o
-finishO = order none
+finishO :: (Coordinate c, Order o) => Builder c o t -> Builder c o t
+finishO = order noneO
 
-finishT :: Builder c o -> Builder c o
-finishT = task None
-
-order :: Order o => o -> Builder c o -> Builder c o
+order :: Order o => o -> Builder c o t -> Builder c o t
 order o (Builder c _ tsk) = Builder c o tsk
 
-move :: Coordinate c => c -> Builder c o -> Builder c o
+move :: Coordinate c => c -> Builder c o t -> Builder c o t
 move c (Builder _ ord tsk) = Builder c ord tsk
 
-task :: Task c -> Builder c o -> Builder c o
+task :: Task t => t -> Builder c o t -> Builder c o t
 task tsk (Builder c ord _) = Builder c ord tsk
-
-incrOrder :: Order o => Builder c o -> Builder c o
-incrOrder (Builder pos ord None) =
-    let (ord', tsk) = next ord in
-    Builder pos ord' tsk
 

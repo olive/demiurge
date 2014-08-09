@@ -5,3 +5,6 @@ select b f t = if b then t else f
 
 (&&&) :: (a -> Bool) -> (a -> Bool ) -> a -> Bool
 (&&&) f g x = all id [f x, g x]
+
+(|@|) :: (a, b) -> c -> (a, b, c)
+(|@|) (x, y) z = (x, y, z)
