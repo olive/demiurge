@@ -1,40 +1,55 @@
 module Demiurge.Builder where
 
-import Demiurge.Common
+import Demiurge.Data.Coordinate
+import Demiurge.World
 
+type OrderPool o = [o]
 
-data Task = Move Cell | None
+manageTask :: (World w c, Order o)
+           => Builder c o
+           -> w
+           -> OrderPool o
+           -> (Builder c o, w, OrderPool o)
+manageTask (Builder xy ord (Path (pos:ps))) w pool =
+    if (free w pos)
+    then (Builder pos ord (Path ps), w, pool)
+    else (Builder xy none None, w, ord:pool)
+manageTask (Builder xy ord (Path [])) w pool =
+    let (no, tsk) = next ord in
+    (Builder xy no tsk, w, pool)
+manageTask (Builder xy ord None) w pool =
+    let (no, tsk) = next ord in
+    (Builder xy no tsk, w, pool)
+
+data Task c = Path [c] | None
+
+--class Task t where
+--    perform :: World w c => w -> Builder c
 
 class Order o where
-    next :: o -> (o, Task)
+    next :: o -> (o, Task c)
     rewind :: o
     none :: o
 
-data Builder order = Builder Cell order Task
+data Builder c o = Builder c o (Task c)
 
-finishO :: Order o => Builder o -> Builder o
+finishO :: (Coordinate c, Order o) => Builder c o -> Builder c o
 finishO = order none
 
-finishT :: Builder o -> Builder o
+finishT :: Builder c o -> Builder c o
 finishT = task None
 
-order :: Order o => o -> Builder o -> Builder o
+order :: Order o => o -> Builder c o -> Builder c o
 order o (Builder c _ tsk) = Builder c o tsk
 
-move :: Cell -> Builder o -> Builder o
+move :: Coordinate c => c -> Builder c o -> Builder c o
 move c (Builder _ ord tsk) = Builder c ord tsk
 
-task :: Task -> Builder o -> Builder o
+task :: Task c -> Builder c o -> Builder c o
 task tsk (Builder c ord _) = Builder c ord tsk
 
-processTask :: Task -> Builder o -> Builder o
-processTask None b = b
-processTask (Move c) b = finishT $ move c b
-
-isAllowed :: Task -> Builder o -> Builder o
-isAllowed = undefined
-
-incrOrder :: Order o => Builder o -> Builder o
+incrOrder :: Order o => Builder c o -> Builder c o
 incrOrder (Builder pos ord None) =
     let (ord', tsk) = next ord in
     Builder pos ord' tsk
+
