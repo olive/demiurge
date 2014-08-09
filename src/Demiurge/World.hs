@@ -1,9 +1,24 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Demiurge.World where
 
-import Demiurge.Common
+import Prelude hiding (all)
+import Data.Foldable
 
-data Tile = Solid | Free
+import Demiurge.Data.Coordinate
+import Demiurge.Utils
 
-class World a where
-    get :: World a => Cell -> Maybe Tile
-    put :: World a => Cell -> Tile -> a
+data Tile = Solid | Free deriving Eq
+
+class (Coordinate b) => World a b where
+    get :: a -> b -> Maybe Tile
+    put :: a -> b -> Tile -> a
+
+    oob :: a -> b -> Bool
+
+    free :: a -> b -> Bool
+    free w c = all (==Free) (get w c)
+
+    adjWhere :: a -> (b -> Bool) -> b -> [b]
+    adjWhere w p c =
+        filter ((not . oob w) &&& p) $ adj c
+
