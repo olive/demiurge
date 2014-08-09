@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, UndecidableInstances, TypeFamilies, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE RankNTypes, UndecidableInstances, TypeFamilies, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, FlexibleContexts, FunctionalDependencies #-}
 module Demiurge.Blueprint where
 
 import Control.Applicative((<$>))
@@ -8,12 +8,10 @@ import Demiurge.Common
 import Demiurge.Order
 import Demiurge.Task
 import qualified Demiurge.Pathing.Dijkstra as D
-import Demiurge.World
 import Demiurge.Data.Graph
-import Demiurge.Data.Array2d
 
-class Blueprint c p o where
-    generate :: (Order o t, Task t, Graph a b c) => a b -> p -> [o]
+class Blueprint p c o t | o t -> c where
+    generate :: (Order o t, Task t, Graph a b c) => a b -> p -> [o t]
 
 
 data Rect = Rect Int Int Int Int
@@ -27,15 +25,13 @@ rectToBorder (Rect x y width height) = do
 mkOL :: (Cell -> Thing Cell) -> OrderList (Thing Cell)
 mkOL f = TaskList [f] [f]
 
-instance Blueprint Cell Rect (OrderList (Thing Cell)) where
+instance Blueprint Rect Cell OrderList (Thing Cell) where
     generate gr r =
         let border = rectToBorder r in
         let mkPath :: Cell -> Cell -> Thing Cell
 
             mkPath dst pos = Path $ fromMaybe [] $ D.pfind gr pos dst in
         let t = mkPath <$> border in
-        let r :: [OrderList (Thing Cell)]
-            r = mkOL <$> t in
-        r
+        mkOL <$> t
 
 

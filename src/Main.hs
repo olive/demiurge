@@ -35,7 +35,7 @@ manageOrder b pool =
     then giveOrd b pool
     else (b, pool)
 
-giveOrd :: Order o => Builder c o t -> OrderPool o t -> (Builder c o t, OrderPool o t)
+giveOrd :: Order o t => Builder c o t -> OrderPool o t -> (Builder c o t, OrderPool o t)
 giveOrd b [] = (b, [])
 giveOrd b (x:xs) = (order x b, xs)
 
@@ -49,7 +49,7 @@ genWorld =
     let bs = [] in
     (bs, op, world)
 
-update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o)
+update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o t)
        => [Builder c o t]
        -> w
        -> OrderPool o t
