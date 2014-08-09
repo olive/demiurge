@@ -5,8 +5,7 @@ import Demiurge.World
 import Demiurge.Builder
 import Demiurge.Common
 
-data Thing a = Move a
-             | Path [a]
+data Thing a = Path [a]
              | Build a
              | None
 
@@ -34,10 +33,12 @@ instance Task (Thing a) where
     type GetC (Thing a) = a
     noneT = None
     isNoneT = thingNone
-    allowed (Move pos) _ w = free w pos
-    allowed (Build pos) _ w = free w pos
+    allowed (Path (x:_)) _ w = free w x
+    allowed (Path []) _ _ = True
+    allowed (Build pos) b w = free w pos && hasStone b
     allowed None _ _ = True
-    perform (Move pos) b w pool = (move pos b, w, pool)
-    perform (Build pos) b w pool = (b, put w pos Solid, pool)
+    perform (Path (x:xs)) b w pool = (task (Path xs) $ move x b, w, pool)
+    perform (Path []) b w pool = (task None b, w, pool)
+    perform (Build pos) b w pool = (spendStone b, put w pos Solid, pool)
     perform None b w pool = (b, w, pool)
 

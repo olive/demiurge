@@ -20,10 +20,10 @@ manageTask :: (c ~ GetC t, World w c, Order o t, Task t)
            -> w
            -> OrderPool o t
            -> (Builder c o t, w, OrderPool o t)
-manageTask b@(Builder xy ord t) w pool =
+manageTask b@(Builder xy ord t rs) w pool =
     if allowed t b w
     then perform t b w pool
-    else (Builder xy noneO noneT, w, rewind ord : pool)
+    else (Builder xy noneO noneT rs, w, rewind ord : pool)
 
 -- check to see that a builder has orders. if not, give them one if one is available
 manageOrder :: (Order o t, Task t)

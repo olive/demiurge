@@ -29,7 +29,6 @@ instance Blueprint Rect Cell OrderList (Thing Cell) where
     generate gr r =
         let border = rectToBorder r in
         let mkPath :: Cell -> Cell -> Thing Cell
-
             mkPath dst pos = Path $ fromMaybe [] $ D.pfind gr pos dst in
         let t = mkPath <$> border in
         mkOL <$> t
