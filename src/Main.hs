@@ -1,4 +1,6 @@
-﻿module Main where
+﻿{-# LANGUAGE GADTs #-}
+
+module Main where
 
 import Demiurge.Common()
 import Demiurge.World
@@ -6,17 +8,18 @@ import Demiurge.Data.Graph()
 import Demiurge.Pathing.Dijkstra()
 import Demiurge.Builder
 import Demiurge.Data.Coordinate
+import Demiurge.Utils
 
-fold3 :: [a] -> b -> c -> (a -> b -> c -> (a, b, c)) -> ([a], b, c)
-fold3 xs w y f = foldl (\(acc, w', y') x -> let (p, q, r) = f x w' y' in (p:acc, q, r)) ([], w, y) xs
 
-update :: (Task t, Coordinate c, World w c, Order o)
+update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o)
        => [Builder c o t]
        -> w
        -> OrderPool o
        -> ([Builder c o t], w, OrderPool o)
 update bs world pool =
-    fold3 bs world pool manageTask
+    let (bs', w', p') = fold3 bs world pool manageTask in
+    let (bs'', p'') = fold2 bs' p' manageOrder in
+    (bs'', w', p'')
 
 main :: IO ()
 main = putStrLn "test"
