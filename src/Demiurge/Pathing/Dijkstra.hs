@@ -26,8 +26,8 @@ infinity = 1 / 0
 getDist :: Ord a => Map.Map a Float -> a -> Float
 getDist m x = Map.findWithDefault infinity x m
 
-dijkstraHelper :: (Ord c, Graph a c)
-               => a
+dijkstraHelper :: (Ord c, Graph a b c)
+               => a b
                -> c
                -> c
                -> Path c
@@ -52,8 +52,8 @@ dijkstraHelper g start goal (Path dist prev prio) =
                  Path newDist newPrev newPrio
             else p
 
-pfind :: (Ord c, Graph a c)
-      => a
+pfind :: (Ord c, Graph a b c)
+      => a b
       -> c
       -> c
       -> Maybe [c]

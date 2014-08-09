@@ -1,13 +1,14 @@
 {-# LANGUAGE RankNTypes, UndecidableInstances, TypeFamilies #-}
 module Demiurge.Task where
+
 import Demiurge.World
 import Demiurge.Builder
-import Demiurge.Order
 import Demiurge.Common
+
 data Thing a = Move a
+             | Path [a]
              | Build a
              | None
-
 
 class Task t where
     type GetC t
