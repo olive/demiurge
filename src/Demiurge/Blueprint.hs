@@ -22,15 +22,22 @@ rectToBorder (Rect x y width height) = do
               j <- [y..y+height],
               i == 0 || j == 0 || i == width - 1 || j == height - 1]
 
-mkOL :: (Cell -> Thing Cell) -> OrderList (Thing Cell)
-mkOL f = TaskList [f] [f]
+mkOL :: ([Cell -> Thing Cell]) -> OrderList (Thing Cell)
+mkOL f = TaskList f f
 
 instance Blueprint Rect Cell OrderList (Thing Cell) where
     generate gr r =
         let border = rectToBorder r in
-        let mkPath :: Cell -> Cell -> Thing Cell
-            mkPath dst pos = Path $ fromMaybe [] $ D.pfind gr pos dst in
-        let t = mkPath <$> border in
-        mkOL <$> t
+        let mkPath :: Cell -> (Cell -> Thing Cell)
+            mkPath dst pos = Path $ fromMaybe [] $ D.pfind gr pos dst
+        in
+        let mkBuild :: Cell -> (Cell -> Thing Cell)
+            mkBuild dst _ = Build dst
+        in
+        let mkThing :: Cell -> [Cell -> Thing Cell]
+            mkThing dst = [mkPath dst, mkBuild dst]
+        in
+        let t = mkThing <$> border in
+        (mkOL <$> t)
 
 
