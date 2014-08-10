@@ -2,6 +2,8 @@
 
 module Main where
 
+import Data.Maybe
+
 import Demiurge.Common
 import Demiurge.World
 import Demiurge.Data.Graph()
@@ -13,47 +15,54 @@ import Demiurge.Utils
 import Demiurge.Blueprint
 import Demiurge.Task
 import Demiurge.Order
-
+import Demiurge.Goal
 -- take a builder and do their current task
-manageTask :: (c ~ GetC t, World w c, Order o t, Task t)
-           => Builder c o t
+manageTask :: (c ~ GetC t, World w c, Goal g c, Order o t, Task t)
+           => Builder c g o t
            -> w
-           -> OrderPool o t
-           -> (Builder c o t, w, OrderPool o t)
-manageTask b@(Builder xy ord t rs) w pool =
+           -> GoalPool (g c)
+           -> (Builder c g o t, w, GoalPool (g c))
+manageTask b@(Builder xy goal ord t rs) w pool =
     if allowed t b w
     then perform t b w pool
-    else (Builder xy noneO noneT rs, w, rewind ord : pool)
+    else (Builder xy goal noneO noneT rs, w, goal : pool)
 
 -- check to see that a builder has orders. if not, give them one if one is available
-manageOrder :: (Order o t, Task t)
-            => Builder c o t
-            -> OrderPool o t
-            -> (Builder c o t, OrderPool o t)
+manageOrder :: (Order o t, Task t, Goal g c)
+            => Builder c g o t
+            -> GoalPool (g c)
+            -> (Builder c g o t, GoalPool (g c))
 manageOrder b pool =
     if (((isNoneO . getOrd) &&& (isNoneT . getTsk)) b)
-    then giveOrd b pool
+    then giveGoal b pool
     else (b, pool)
 
-giveOrd :: Order o t => Builder c o t -> OrderPool o t -> (Builder c o t, OrderPool o t)
-giveOrd b [] = (b, [])
-giveOrd b (x:xs) = (order x b, xs)
+giveGoal :: (Order o t, Goal g c)
+        => Builder c g o t
+        -> GoalPool (g c)
+        -> (Builder c g o t, GoalPool (g c))
+giveGoal b gs =
+    let (b', gs') = case splitFind (not . isReserved) gs of
+                        Just (found, rest) -> (goal found b, reserve found : rest)
+                        Nothing -> (b, gs)
+    in
+    (b', gs')
 
-genWorld :: ([Builder Cell OrderList (Thing Cell)],
-             OrderPool OrderList (Thing Cell),
+genWorld :: ([Builder Cell a OrderList (BTask Cell)],
+             GoalPool (BGoal Cell),
              Array2d Tile)
 genWorld =
-    let world = tabulate 10 10 Free (\_ -> Free) in
+    let world = tabulate 10 10 (Tile Free []) (\_ -> (Tile Free [])) in
     let rect = Rect 1 1 10 10 in
     let op = generate world rect in
     let bs = [] in
     (bs, op, world)
 
-update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o t)
-       => [Builder c o t]
+update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o t, Goal g c)
+       => [Builder c g o t]
        -> w
-       -> OrderPool o t
-       -> ([Builder c o t], w, OrderPool o t)
+       -> GoalPool (g c)
+       -> ([Builder c g o t], w, GoalPool (g c))
 update bs world pool =
     let (bs', w', p') = fold3 bs world pool manageTask in
     let (bs'', p'') = fold2 bs' p' manageOrder in
@@ -61,9 +70,9 @@ update bs world pool =
 
 main :: IO ()
 main = do
-    let (builds, opool, world) = genWorld
-    let up bs w op =
-         let (bs', w', op') = update bs w op in
-         up bs' w' op'
-    up builds world opool
+    let (builds, gpool, world) = genWorld
+    let up bs w gp =
+         let (bs', w', gp') = update bs w gp in
+         up bs' w' gp'
+    up builds world gpool
     return ()

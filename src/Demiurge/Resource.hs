@@ -3,3 +3,5 @@ module Demiurge.Resource where
 
 
 data Resource = Stone
+
+data LatentResource = Latent Resource Bool

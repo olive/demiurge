@@ -3,32 +3,41 @@ module Demiurge.Builder where
 
 import Demiurge.Resource
 
-data Builder c o t = Builder c (o t) t [Resource]
+data Builder c g o t = Builder c (g c) (o t) t [Resource]
 
-getPos :: Builder c o t -> c
-getPos (Builder c _ _ _) = c
+getPos :: Builder c g o t -> c
+getPos (Builder c _ _ _ _) = c
 
-getOrd :: Builder c o t -> o t
-getOrd (Builder _ ord _ _) = ord
+getGoal :: Builder c g o t -> g c
+getGoal (Builder _ gol _ _ _) = gol
 
-getTsk :: Builder c o t -> t
-getTsk (Builder _ _ tsk _) = tsk
+getOrd :: Builder c g o t -> o t
+getOrd (Builder _ _ ord _ _) = ord
 
-move :: c -> Builder c o t -> Builder c o t
-move c (Builder _ ord tsk rs) = Builder c ord tsk rs
+getTsk :: Builder c g o t -> t
+getTsk (Builder _ _ _ tsk _) = tsk
 
-order :: o t -> Builder c o t -> Builder c o t
-order o (Builder c _ tsk rs) = Builder c o tsk rs
+move :: c -> Builder c g o t -> Builder c g o t
+move c (Builder _ gol ord tsk rs) = Builder c gol ord tsk rs
 
-task :: t -> Builder c o t -> Builder c o t
-task tsk (Builder c ord _ rs) = Builder c ord tsk rs
+goal :: g c -> Builder c g o t -> Builder c g o t
+goal g (Builder c _ ord tsk rs) = Builder c g ord tsk rs
 
-hasStone :: Builder c o t -> Bool
-hasStone (Builder _ _ _ (Stone:_)) = True
+order :: o t -> Builder c g o t -> Builder c g o t
+order o (Builder c gol _ tsk rs) = Builder c gol o tsk rs
+
+task :: t -> Builder c g o t -> Builder c g o t
+task tsk (Builder c gol ord _ rs) = Builder c gol ord tsk rs
+
+collectStone :: Builder c g o t -> Builder c g o t
+collectStone (Builder c gol ord tsk rs) = Builder c gol ord tsk (Stone:rs)
+
+hasStone :: Builder c g o t -> Bool
+hasStone (Builder _ _ _ _ (Stone:_)) = True
 hasStone _ = False
 
 -- Because allow and perform are separate, we cannot avoid
 -- checking the case where
-spendStone :: Builder c o t -> Builder c o t
-spendStone (Builder c ord tsk (Stone:xs)) = Builder c ord tsk xs
+spendStone :: Builder c g o t -> Builder c g o t
+spendStone (Builder c gol ord tsk (Stone:xs)) = Builder c gol ord tsk xs
 spendStone _ = undefined -- at least catch that case and die

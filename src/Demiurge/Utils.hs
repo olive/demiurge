@@ -14,3 +14,16 @@ fold3 xs w y f = foldl (\(acc, w', y') x -> let (p, q, r) = f x w' y' in (p:acc,
 
 fold2 :: [a] -> b -> (a -> b -> (a, b)) -> ([a], b)
 fold2 xs w f = foldl (\(acc, w') x -> let (p, q) = f x w' in (p:acc, q)) ([], w) xs
+
+-- returns the first element satisfying f, and the list with that element removed
+-- this reverses the list
+splitFind :: (a -> Bool) -> [a] -> Maybe (a, [a])
+splitFind _ [] = Nothing
+splitFind g xs =
+    let inner _ _ [] = Nothing
+        inner f acc (y:ys) =
+            if f y
+            then Just (y, acc ++ ys)
+            else inner f (y:acc) ys
+    in
+    inner g [] xs
