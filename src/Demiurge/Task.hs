@@ -17,8 +17,8 @@ class Task t where
             => t
             -> Builder c g o t
             -> w
-            -> GoalPool (g c)
-            -> (Builder c g o t, w, GoalPool (g c))
+            -> GoalPool g c (o t) t
+            -> (Builder c g o t, w, GoalPool g c (o t) t)
     allowed :: (c ~ GetC t, World w c)
             => t
             -> Builder c g o t

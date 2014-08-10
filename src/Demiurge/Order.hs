@@ -3,6 +3,8 @@ module Demiurge.Order where
 
 import Demiurge.Common
 
+--o = type of order
+--t = type of task
 class Order o t | o -> t where
     next :: o t -> (o t, Maybe (Cell -> t))
     noneO :: o t

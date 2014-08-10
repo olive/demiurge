@@ -2,8 +2,10 @@ module Demiurge.Common where
 
 type Cell = (Int,Int)
 
-type GoalPool o = [o]
+data GoalPool g c o t = GoalPool [g c]
 
+gpAppend :: g c -> GoalPool g c o t -> GoalPool g c o t
+gpAppend x (GoalPool xs) = GoalPool (x:xs)
 
 data Rect = Rect Int Int Int Int
 

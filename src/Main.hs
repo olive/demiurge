@@ -17,39 +17,39 @@ import Demiurge.Task
 import Demiurge.Order
 import Demiurge.Goal
 -- take a builder and do their current task
-manageTask :: (c ~ GetC t, World w c, Goal g c, Order o t, Task t)
+manageTask :: (c ~ GetC t, World w c, Goal g o t c , Order o t, Task t)
            => Builder c g o t
            -> w
-           -> GoalPool (g c)
-           -> (Builder c g o t, w, GoalPool (g c))
+           -> GoalPool g c (o t) t
+           -> (Builder c g o t, w, GoalPool g c (o t) t)
 manageTask b@(Builder xy goal ord t rs) w pool =
     if allowed t b w
     then perform t b w pool
-    else (Builder xy goal noneO noneT rs, w, goal : pool)
+    else (Builder xy goal noneO noneT rs, w, gpAppend goal pool)
 
 -- check to see that a builder has orders. if not, give them one if one is available
-manageOrder :: (Order o t, Task t, Goal g c)
+manageOrder :: (Order o t, Task t, Goal g o t c)
             => Builder c g o t
-            -> GoalPool (g c)
-            -> (Builder c g o t, GoalPool (g c))
+            -> GoalPool g c (o t) t
+            -> (Builder c g o t, GoalPool g c (o t) t)
 manageOrder b pool =
     if (((isNoneO . getOrd) &&& (isNoneT . getTsk)) b)
     then giveGoal b pool
     else (b, pool)
 
-giveGoal :: (Order o t, Goal g c)
+giveGoal :: (Order o t, Task t, Goal g o t c)
         => Builder c g o t
-        -> GoalPool (g c)
-        -> (Builder c g o t, GoalPool (g c))
-giveGoal b gs =
+        -> GoalPool g c (o t) t
+        -> (Builder c g o t, GoalPool g c (o t) t)
+giveGoal b (GoalPool gs) =
     let (b', gs') = case splitFind (not . isReserved) gs of
-                        Just (found, rest) -> (goal found b, reserve found : rest)
+                        Just (found, rest) -> (goal found b, (reserve found) : rest)
                         Nothing -> (b, gs)
     in
-    (b', gs')
+    (b', GoalPool gs')
 
 genWorld :: ([Builder Cell a OrderList (BTask Cell)],
-             GoalPool (BGoal Cell),
+             GoalPool BGoal Cell (OrderList (BTask Cell)) (BTask Cell),
              Array2d Tile)
 genWorld =
     let world = tabulate 10 10 (Tile Free []) (\_ -> (Tile Free [])) in
@@ -58,11 +58,11 @@ genWorld =
     let bs = [] in
     (bs, op, world)
 
-update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o t, Goal g c)
+update :: (c ~ GetC t, Task t, Coordinate c, World w c, Order o t, Goal g o t c)
        => [Builder c g o t]
        -> w
-       -> GoalPool (g c)
-       -> ([Builder c g o t], w, GoalPool (g c))
+       -> GoalPool g c (o t) t
+       -> ([Builder c g o t], w, GoalPool g c (o t) t)
 update bs world pool =
     let (bs', w', p') = fold3 bs world pool manageTask in
     let (bs'', p'') = fold2 bs' p' manageOrder in
