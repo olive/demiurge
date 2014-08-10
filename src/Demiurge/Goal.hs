@@ -10,7 +10,7 @@ import Demiurge.Data.Graph
 
 import qualified Demiurge.Pathing.Dijkstra as D
 
-class Goal g o t c | g -> o, g -> t, g -> c, t -> c, o -> c where
+class Goal g o t c | c -> g, c -> o, c -> t where
     toOrders :: (Task t, Order o t, Graph a b c)
              => g c
              -> a b

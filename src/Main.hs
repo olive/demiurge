@@ -2,8 +2,6 @@
 
 module Main where
 
-import Data.Maybe
-
 import Demiurge.Common
 import Demiurge.World
 import Demiurge.Data.Graph()
@@ -22,10 +20,10 @@ manageTask :: (c ~ GetC t, World w c, Goal g o t c , Order o t, Task t)
            -> w
            -> GoalPool g c (o t) t
            -> (Builder c g o t, w, GoalPool g c (o t) t)
-manageTask b@(Builder xy goal ord t rs) w pool =
+manageTask b@(Builder xy gol _ t rs) w pool =
     if allowed t b w
     then perform t b w pool
-    else (Builder xy goal noneO noneT rs, w, gpAppend goal pool)
+    else (Builder xy gol noneO noneT rs, w, gpAppend gol pool)
 
 -- check to see that a builder has orders. if not, give them one if one is available
 manageOrder :: (Order o t, Task t, Goal g o t c)
