@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 executable demiurge
   main-is:             Main.hs
   hs-source-dirs:      src
-  extensions:          GADTs
+  extensions:          GADTs, TypeSynonymInstances, FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.6 && <4.7, containers, PSQueue, vector

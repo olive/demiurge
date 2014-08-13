@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
-
 module Demiurge.Data.Coordinate where
 
 import Demiurge.Common

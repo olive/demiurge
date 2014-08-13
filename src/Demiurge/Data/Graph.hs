@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses, KindSignatures, TypeSynonymInstances, FlexibleInstances, FunctionalDependencies #-}
-
 module Demiurge.Data.Graph where
 
 import Prelude hiding (any)

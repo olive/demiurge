@@ -1,15 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-|
-Module      : Demiurge.Data.Array2d
-Description : 2 dimensional arrays
-Copyright   : (c) deweyvm 2014
-License     : MIT
-Maintainer  : deweyvm
-Stability   : experimental
-Portability : unknown
-
-2 dimensional arrays (implemented as a flat Data.Vector) and utility methods.
--}
 module Demiurge.Data.Array2d(
     Array2d(..),
     get,
@@ -43,7 +31,10 @@ toVec :: Array2d a -> Vec.Vector a
 toVec (Array2d _ _ v) = v
 
 toCoords :: Array2d a -> Int -> XY
-toCoords (Array2d cols _ _) k = (k `mod` cols, k `quot` cols)
+toCoords (Array2d cols _ _) k = rawToCoords cols k
+
+rawToCoords :: Int -> Int -> XY
+rawToCoords cols k = (k `mod` cols, k `quot` cols)
 
 fromCoords :: Array2d a -> XY -> Int
 fromCoords (Array2d cols _ _) (i, j) = i + j * cols
@@ -92,10 +83,10 @@ find f arr =
     Vec.find (\(_, e) -> f e) zipped
 
 -- | Creates a new Array2d from a generating function.
-tabulate :: Col -> Row -> a -> (XY -> a) -> Array2d a
-tabulate cols rows initial f =
-    (\p _ -> f p) <$*>  base
-    where base = Array2d cols rows $ Vec.replicate (cols*rows) initial
+tabulate :: Col -> Row -> (XY -> a) -> Array2d a
+tabulate cols rows f =
+    let vec = Vec.generate (cols*rows) (\k -> f $ rawToCoords cols k) in
+    Array2d cols rows vec
 
 -- | Returns true iff the coordinates are within the bounds of the array.
 inRange :: Array2d a -> XY -> Bool
