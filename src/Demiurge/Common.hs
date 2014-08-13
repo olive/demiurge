@@ -1,11 +1,12 @@
 module Demiurge.Common where
 
-type Cell = (Int,Int,Int)
+type XYZ = (Int,Int,Int)
 
+type XY = (Int,Int)
 
 data Rect = Rect Int Int Int Int
 
-rectToBorder :: Int => Rect -> [Cell]
+rectToBorder :: Int => Rect -> [XYZ]
 rectToBorder k (Rect x y width height) = do
     [(i, j, k) | i <- [x..x+width],
               j <- [y..y+height],
