@@ -27,3 +27,20 @@ splitFind g xs =
             else inner f (y:acc) ys
     in
     inner g [] xs
+
+headOpt :: [a] -> Maybe a
+headOpt (x:_) = Just x
+headOpt _ = Nothing
+
+
+class Same a where
+    same :: a -> a -> Bool
+
+updateAt :: Same a => a -> [a] -> [a]
+updateAt xx yys =
+    let helper x acc (y:ys) = if same x y
+                              then (x:ys ++ acc)
+                              else helper x (y:acc) ys
+        helper x acc [] = x:acc
+    in
+    helper xx [] yys

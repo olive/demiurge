@@ -43,7 +43,7 @@ put a@(Array3d cols rows lays vec) (x, y, z) t =
 getLayer :: Array3d a -> Int -> Maybe (A2D.Array2d a)
 getLayer (Array3d _ _ _ vec) z = vecGet vec z
 
-tabulate :: Col -> Row -> Layer ->(XYZ -> a) -> Array3d a
+tabulate :: Col -> Row -> Layer -> (XYZ -> a) -> Array3d a
 tabulate cols rows layers f =
     let vec = Vec.generate layers (\z -> A2D.tabulate cols rows (\(x, y) -> f (x, y, z))) in
     Array3d cols rows layers vec
