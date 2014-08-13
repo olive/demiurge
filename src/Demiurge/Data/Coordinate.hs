@@ -10,6 +10,6 @@ class Coordinate c where
     adj :: c -> [c]
 
 instance Coordinate Cell where
-    (x, y) |+| (w, z) = (w + x, y + z)
-    (x, y) |-| (w, z) = (x - w, y - z)
-    adj (x, y) = [(x-1, y), (x+1, y), (x, y+1), (x, y-1)]
+    (x, y, z) |+| (a, b, c) = (a + x, b + y, c + z)
+    (x, y, z) |-| (a, b, c) = (a - x, b - y, c - z)
+    adj (x, y, z) = [(x-1, y, z), (x+1, y, z), (x, y+1, z), (x, y-1, z)]
