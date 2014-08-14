@@ -6,7 +6,7 @@ type XY = (Int,Int)
 
 data Rect = Rect Int Int Int Int
 
-rectToBorder :: Int => Rect -> [XYZ]
+rectToBorder :: Int -> Rect -> [XYZ]
 rectToBorder k (Rect x y width height) = do
     [(i, j, k) | i <- [x..x+width],
               j <- [y..y+height],

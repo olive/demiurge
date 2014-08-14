@@ -16,60 +16,82 @@ data AGoal where
 
 data ATask = Pickup | Drop | Path [XYZ] | Navigate XYZ XYZ
 data APlan g = APlan [g] [g] (Maybe (APlan g))
-data ASchema = ASchema
+data ASchema g = ASchema g
 data Tile
 data AWorld = AWorld (A3D.Array3d Tile)
-data AWorldState w s g k = AWorldState w s [Worker k]
+data AWorldState w s g t k = AWorldState w s [Worker g t k]
 type AState a = State a a
 
-type WS w s g k = AState (AWorldState w s g k)
-data Working g = Working g [ATask]
-data Idle = Idle
-data Worker k = Worker Int XYZ Job k
+type WS w s g t k = AState (AWorldState w s g t k)
+data Working
+data Finished g = Finished g
+data Idle
+data Worker g t k where
+    WorkerA :: (Task t, Goal g)
+            => Int -> XYZ -> Job -> g -> NonEmpty t -> Worker g t Working
+    WorkerB :: (Task t, Goal g)
+            => Int -> XYZ -> Job -> Worker g t Idle
+type NonEmpty t = (t, [t])
 
-getId :: Worker k -> Int
-getId (Worker i _ _ _) = i
 
-tasks :: Worker (Working g) -> [ATask]
-tasks (Worker _ _ _ (Working _ tsks)) = tsks
+getId :: Worker g t k -> Int
+getId (WorkerA i _ _ _ _) = i
+getId (WorkerB i _ _ ) = i
 
-goal :: Worker (Working g) -> g
-goal (Worker _ _ _ (Working gol _)) = gol
+tasks :: Worker g t Working -> NonEmpty t
+tasks (WorkerA _ _ _ _ tsks) = tsks
 
-setGoal :: Goal g => g -> [ATask] -> Worker Idle -> Worker (Working g)
-setGoal gol tsks (Worker i pos job _) = Worker i pos job (Working gol tsks)
+goal :: Worker g t Working -> g
+goal (WorkerA _ _ _ gol _) = gol
 
-putWorker :: Goal g => Worker k -> AWorldState w s g k -> AWorldState w s g k
+setGoal :: (Task t, Goal g)
+        => g
+        -> NonEmpty t
+        -> Worker g t Idle
+        -> Worker g t Working
+setGoal gol tsks (WorkerB i pos job) = WorkerA i pos job gol tsks
+
+putWorker :: (Goal g, Task t)
+          => Worker g t k
+          -> AWorldState w s g t k
+          -> AWorldState w s g t k
 putWorker wk ws =
     (setWorkers ws . updateAt wk . getWorkers) ws
 
-getWorkers :: AWorldState w s g k -> [Worker k]
+getWorkers :: AWorldState w s g t k -> [Worker g t k]
 getWorkers (AWorldState _ _ wks) = wks
 
-setWorkers :: AWorldState w s g k -> [Worker k] -> AWorldState w s g k
+setWorkers :: AWorldState w s g t k -> [Worker g t k] -> AWorldState w s g t k
 setWorkers (AWorldState w s _) wks = AWorldState w s wks
 
-allTasks :: Goal g => WS w s g k
+allTasks :: (Task t, Goal g) => WS w s g t k
 allTasks = do
     a@(AWorldState _ _ wks) <- get
     foldlM thing a wks
-    where thing ws w = do
-              let w' = w
-              let ws' = putWorker w' ws
-              return ws'
+    where thing _ w = doThing w
 
-giveGoal :: Goal g => g -> Worker g -> Worker g
-giveGoal gol wk@(Worker _ _ _ Nothing _) =
+doThing :: (Task t, Goal g) => Worker g t k -> WS w s g t k
+doThing w@(WorkerA _ _ _ _ _) = performTasks w
+doThing w@(WorkerB _ _ _) = do
+    ws <- get
+    findGoal w ws
+
+findGoal :: (Task t, Goal g)
+         => Worker g t Idle
+         -> AWorldState w s g t k
+         -> WS w s g t k
+findGoal = undefined
+
+giveGoal :: Goal g => g -> Worker g t Idle -> Worker g t Working
+giveGoal gol wk@(WorkerB _ _ _) =
     let tsks = toOrder gol in
     setGoal gol tsks wk
 
-impossible :: a
-impossible = undefined
-
-refreshTasks :: Goal g => Working g -> Worker g
-refreshTasks (Worker _ _ _ (Just gol) (x:xs)) = impossible
-
-
+performTasks :: (Task t, Goal g) => Worker g t Working -> WS w s g t k
+performTasks wk@(WorkerA _ _ _ _ (t, _)) = do
+    ws <- get
+    let (wk', ws') = perform t wk ws
+    return $ putWorker wk' ws'
 
 
 class Plan p where
@@ -77,17 +99,18 @@ class Plan p where
 
 class Same t => Task t where
     perform :: t
-            -> Worker k
-            -> WS w s g k
+            -> Worker g t Working
+            -> AWorldState w s g t k
+            -> (Worker g t k, AWorldState w s g t k)
 
 class Same g => Goal g where
-    toOrder :: g -> [ATask]
+    toOrder :: (Task t) => g -> NonEmpty t
 
 class Schema s where
-    mkTasks :: s -> Worker k -> w -> g -> [ATask]
-    process :: s -> Worker k -> (s, Worker k)
+    mkTasks :: s -> Worker g t k -> w -> g -> NonEmpty t
+    process :: s -> Worker g t k -> (s, Worker g t k)
 
 
-instance Same (Worker k) where
+instance Same (Worker g t k) where
     same w1 w2 = getId w1 == getId w2
 
