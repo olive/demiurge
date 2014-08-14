@@ -1,6 +1,5 @@
 module Demiurge.Worker where
 
-import Control.Monad.State
 
 import Demiurge.Common
 import Demiurge.Utils
@@ -22,10 +21,6 @@ data ASchema s = ASchema s
 data Tile
 data AWorld = AWorld (A3D.Array3d Tile)
 data WorldState w s p g t = WorldState w s [EWorker g t]
-type AState a = State a a
-
-type WS w s p g t = AState (WorldState w s p g t)
-
 
 type NonEmpty t = (t, [t])
 
@@ -77,11 +72,6 @@ putWorker :: EWorker g t
 putWorker wk ws =
     (setWorkers ws . updateAt wk . getWorkers) ws
 
-sputWorker :: EWorker g t
-           -> WS w s p g t
-sputWorker wk = do
-    ws <- get
-    return $ putWorker wk ws
 
 getSchema :: WorldState w s p g t
           -> s
@@ -92,11 +82,6 @@ putSchema :: s
           -> WorldState w s p g t
 putSchema s (WorldState w _ wks) = WorldState w s wks
 
-mapSchema :: (s -> s) -> WS w s p g t
-mapSchema f = do
-    ws <- get
-    let s = getSchema ws
-    return $ putSchema (f s) ws
 
 getWorkers :: WorldState w s p g t -> [EWorker g t]
 getWorkers (WorldState _ _ wks) = wks
@@ -104,11 +89,6 @@ getWorkers (WorldState _ _ wks) = wks
 setWorkers :: WorldState w s p g t -> [EWorker g t] -> WorldState w s p g t
 setWorkers (WorldState w s _) wks = WorldState w s wks
 
-foldlS :: (a -> AState b) -> [a] -> AState b
-foldlS _ [] = get
-foldlS f (x:xs) = do
-    f x
-    foldlS f xs
 
 coordinateTasks :: (Schema s, Task t, Goal g, Plan p)
                 => WorldState w s p g t
