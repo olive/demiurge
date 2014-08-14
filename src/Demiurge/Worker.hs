@@ -30,8 +30,8 @@ data APlan p = APlan [p] [p] (Maybe (APlan p))
 data PlanList p = PlanList [p]
 
 data AWorld = AWorld (A3D.Array3d T.Tile)
-data WorldState w c s p g t = WorldState w s [EWorker c g t]
-getWorld :: WorldState w c s p g t -> w
+data WorldState w c s g t = WorldState w s [EWorker c g t]
+getWorld :: WorldState w c s g t -> w
 getWorld (WorldState w _ _) = w
 type NonEmpty t = (t, [t])
 
@@ -96,53 +96,53 @@ setGoal :: (Task t, Goal g)
 setGoal gol tsks (Unemployed i pos job rs _) = Employed i pos job rs gol tsks
 
 putWorker :: EWorker c g t
-          -> WorldState w c s p g t
-          -> WorldState w c s p g t
+          -> WorldState w c s g t
+          -> WorldState w c s g t
 putWorker wk ws =
     (setWorkers ws . updateAt wk . getWorkers) ws
 
 
-getSchema :: WorldState w c s p g t
+getSchema :: WorldState w c s g t
           -> s
 getSchema (WorldState _ s _) = s
 
 putSchema :: s
-          -> WorldState w c s p g t
-          -> WorldState w c s p g t
+          -> WorldState w c s g t
+          -> WorldState w c s g t
 putSchema s (WorldState w _ wks) = WorldState w s wks
 
 
-getWorkers :: WorldState w c s p g t -> [EWorker c g t]
+getWorkers :: WorldState w c s g t -> [EWorker c g t]
 getWorkers (WorldState _ _ wks) = wks
 
-setWorkers :: WorldState w c s p g t
+setWorkers :: WorldState w c s g t
            -> [EWorker c g t]
-           -> WorldState w c s p g t
+           -> WorldState w c s g t
 setWorkers (WorldState w s _) wks = WorldState w s wks
 
 
-coordinateTasks :: (World w c, Schema s, Task t, Goal g, Plan p)
-                => WorldState w c s p g t
-                -> WorldState w c s p g t
+coordinateTasks :: (World w c, Schema s, Task t, Goal g)
+                => WorldState w c s g t
+                -> WorldState w c s g t
 coordinateTasks ws =
     let wks = getWorkers ws in
     foldl processWorker ws wks
 
 
-processWorker :: (World w c, Schema s, Task t, Goal g, Plan p)
-              => WorldState w c s p g t
+processWorker :: (World w c, Schema s, Task t, Goal g)
+              => WorldState w c s g t
               -> EWorker c g t
-              -> WorldState w c s p g t
+              -> WorldState w c s g t
 processWorker ws (WorkingWorker wk) =
     performTasks ws wk
 processWorker ws (IdleWorker wk) =
     findGoal ws wk
 
 
-findGoal :: (Schema s, Task t, Goal g, Plan p)
-         => WorldState w c s p g t
+findGoal :: (Schema s, Task t, Goal g)
+         => WorldState w c s g t
          -> Worker c g t Idle
-         -> WorldState w c s p g t
+         -> WorldState w c s g t
 findGoal ws wk  = do
     let s = getSchema ws
     let wk' = employ s wk ws
@@ -151,16 +151,16 @@ findGoal ws wk  = do
 giveGoal :: (Task t, Goal g, Schema s)
          => g
          -> Worker c g t Idle
-         -> WorldState w c s p g t
+         -> WorldState w c s g t
          -> Worker c g t Working
 giveGoal gol wk (WorldState w s _) =
     let tsks = mkTasks s wk w gol in
     setGoal gol tsks wk
 
 performTasks :: (World w c, Task t, Schema s, Goal g)
-             => WorldState w c s p g t
+             => WorldState w c s g t
              -> Worker c g t Working
-             -> WorldState w c s p g t
+             -> WorldState w c s g t
 performTasks ws wk@(Employed _ _ _ _ _ (t, _)) =
     case allowed t wk ws of
         Permitted -> let (wk', ws') = perform t wk ws in
@@ -174,8 +174,8 @@ performTasks ws wk@(Employed _ _ _ _ _ (t, _)) =
 
 jam :: (Schema s, Goal g, Task t)
     => EWorker c g t
-    -> WorldState w c s p g t
-    -> WorldState w c s p g t
+    -> WorldState w c s g t
+    -> WorldState w c s g t
 jam (IdleWorker wk) ws =
     let s = getSchema ws in
     let moveCmd = move s in
@@ -189,9 +189,9 @@ jam (WorkingWorker wk) ws =
 
 -- required that the current task has been complete
 incrementTask :: (Task t, Schema s)
-              => WorldState w c s p g t
+              => WorldState w c s g t
               -> Worker c g t Working
-              -> WorldState w c s p g t
+              -> WorldState w c s g t
 incrementTask ws wk@(Employed i pos job rs g tsks) = do
     case snd tsks of
         [] -> do
@@ -204,8 +204,8 @@ incrementTask ws wk@(Employed i pos job rs g tsks) = do
             putWorker nwk ws
 
 incrementTasks :: (Task t, Schema s)
-               => WorldState w c s p g t
-               -> WorldState w c s p g t
+               => WorldState w c s g t
+               -> WorldState w c s g t
 incrementTasks ws =
     let wks = getWorkers ws in
     foldl incr ws wks
@@ -271,12 +271,12 @@ class Task t where
     perform :: (World w c)
             => t
             -> Worker c g t Working
-            -> WorldState w c s p g t
-            -> (EWorker c g t, WorldState w c s p g t)
+            -> WorldState w c s g t
+            -> (EWorker c g t, WorldState w c s g t)
     allowed :: (World w c)
             => t
             -> Worker c g t Working
-            -> WorldState w c s p g t
+            -> WorldState w c s g t
             -> TaskPermission c g t
 
 instance Coordinate c => Task (ATask c) where
@@ -299,14 +299,14 @@ class Schema s where
     move :: Goal g => s -> g
     employ :: s
            -> Worker c g t Idle
-           -> WorldState w c s p g t
+           -> WorldState w c s g t
            -> Worker c g t Working
 
 instance Same (EWorker c g t) where
     same w1 w2 = getId w1 == getId w2
 
-update :: (World w c, Goal g, Plan p, Schema s, Task t)
-       => WorldState w c s p g t
-       -> WorldState w c s p g t
+update :: (World w c, Goal g, Schema s, Task t)
+       => WorldState w c s g t
+       -> WorldState w c s g t
 update ws = update $ (incrementTasks . coordinateTasks) ws
 
