@@ -110,14 +110,18 @@ foldlS f (x:xs) = do
     f x
     foldlS f xs
 
-coordinateTasks :: (Schema s, Task t, Goal g, Plan p) => WS w s p g t
-coordinateTasks = do
-    a <- get
-    let wks = getWorkers a
-    return $ foldl processWorker a wks
+coordinateTasks :: (Schema s, Task t, Goal g, Plan p)
+                => WorldState w s p g t
+                -> WorldState w s p g t
+coordinateTasks ws =
+    let wks = getWorkers ws in
+    foldl processWorker ws wks
 
 
-processWorker :: (Schema s, Task t, Goal g, Plan p) => WorldState w s p g t -> EWorker g t -> WorldState w s p g t
+processWorker :: (Schema s, Task t, Goal g, Plan p)
+              => WorldState w s p g t
+              -> EWorker g t
+              -> WorldState w s p g t
 processWorker ws (WorkingWorker wk) =
     performTasks ws wk
 processWorker ws (IdleWorker wk) =
@@ -163,24 +167,36 @@ jam (IdleWorker wk) ws =
     let moveCmd = move s in
     let wk' = giveGoal moveCmd wk in
     putWorker (packW wk') ws
-jam (WorkingWorker wk@(Employed _ _ _ _ _)) ws =
+jam (WorkingWorker wk) ws =
     let s = getSchema ws in
     let (s', wk') = surrender s (packW wk) "jam" in
     jam wk' (putSchema s' ws)
 
 
 -- required that the current task has been complete
-incrementTask :: (Task t, Schema s) => Worker g t Working-> WS w s p g t
-incrementTask (Employed i pos job g tsks) = do
+incrementTask :: (Task t, Schema s)
+              => WorldState w s p g t
+              -> Worker g t Working
+              -> WorldState w s p g t
+incrementTask ws wk@(Employed i pos job g tsks) = do
     case snd tsks of
         [] -> do
-          let nwk = IdleWorker (Unemployed i pos job "Task Complete")
-          mapSchema $ finish g
-          post g
-          sputWorker nwk
+            let nwk = packI $ makeIdle "Task Complete" wk
+            let s = getSchema ws
+            let ws' = putSchema (finish g s) ws
+            putWorker nwk ws'
         (x:xs) -> do
-          let nwk = WorkingWorker (Employed i pos job g (x, xs))
-          sputWorker nwk
+            let nwk = WorkingWorker (Employed i pos job g (x, xs))
+            putWorker nwk ws
+
+incrementTasks :: (Task t, Schema s)
+               => WorldState w s p g t
+               -> WorldState w s p g t
+incrementTasks ws =
+    let wks = getWorkers ws in
+    foldl incr ws wks
+    where incr st (WorkingWorker wk) = incrementTask st wk
+          incr st _ = st
 
 class Plan p where
     isFinished :: p -> Bool
@@ -208,7 +224,6 @@ class Same t => Task t where
 
 class Same g => Goal g where
     toOrder :: (Task t) => g -> NonEmpty t
-    post :: g -> WS w s p g t
 
 class Schema s where
     mkTasks :: s -> Worker g t k -> w -> g -> NonEmpty t
@@ -221,10 +236,9 @@ class Schema s where
 instance Same (EWorker g t) where
     same w1 w2 = getId w1 == getId w2
 
-updateState :: WS w s p g t
-updateState = undefined
 
-update :: WorldState w s p g t
+update :: (Goal g, Plan p, Schema s, Task t)
+       => WorldState w s p g t
        -> WorldState w s p g t
-update ws = update $ evalState (updateState) ws
+update ws = update $ (incrementTasks . coordinateTasks) ws
 
