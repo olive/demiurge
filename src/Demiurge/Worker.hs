@@ -49,6 +49,7 @@ pack u@(Unemployed _ _ _ _) = packI u
 
 makeIdle :: Reason -> Worker g t Working -> Worker g t Idle
 makeIdle rsn (Employed i pos job _ _ ) = Unemployed i pos job rsn
+
 getId :: EWorker g t -> Int
 getId (WorkingWorker (Employed i _ _ _ _)) = i
 getId (IdleWorker (Unemployed i _ _ _)) = i
@@ -113,8 +114,8 @@ findGoal :: (Schema s, Task t, Goal g, Plan p)
          -> Worker g t Idle
          -> WorldState w s p g t
 findGoal ws wk  = do
-    let plan = (getPlan . getSchema) ws
-    let wk' = employ plan wk ws
+    let s = getSchema ws
+    let wk' = employ s wk ws
     putWorker (packW wk') ws
 
 giveGoal :: (Task t, Goal g) => g -> Worker g t Idle -> Worker g t Working
@@ -180,10 +181,6 @@ incrementTasks ws =
 
 class Plan p where
     isFinished :: p -> Bool
-    employ :: p
-           -> Worker g t Idle
-           -> WorldState w s p g t
-           -> Worker g t Working
 
 data TaskPermission g t where
     Permitted :: TaskPermission g t
@@ -213,6 +210,10 @@ class Schema s where
     surrender :: s -> EWorker g t -> Reason -> (s, EWorker g t)
     -- probably needs entity and world to know where to move to
     move :: Goal g => s -> g
+    employ :: s
+           -> Worker g t Idle
+           -> WorldState w s p g t
+           -> Worker g t Working
 instance Same (EWorker g t) where
     same w1 w2 = getId w1 == getId w2
 
