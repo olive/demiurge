@@ -1,5 +1,8 @@
 module Demiurge.Data.Array3d(
-    Array3d(..),
+    Array3d,
+    cols3,
+    rows3,
+    layers3,
     get,
     tabulate,
     put,
@@ -21,6 +24,15 @@ type Row = Int
 type Layer = Int
 -- | A three dimensional array.
 data Array3d elt = Array3d Col Row Layer (Vec.Vector (A2D.Array2d elt))
+
+cols3 :: Array3d a -> Col
+cols3 (Array3d col _ _ _) = col
+
+rows3 :: Array3d a -> Row
+rows3 (Array3d _ row _ _) = row
+
+layers3 :: Array3d a -> Layer
+layers3 (Array3d _ _ lays _) = lays
 
 instance Functor Array3d where
     fmap f (Array3d cols rows lay v) =

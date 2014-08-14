@@ -6,6 +6,6 @@ import Demiurge.Data.Coordinate
 -- a -- collection type
 -- b -- the node type
 -- c -- coordinate type
-class Coordinate c => Graph a b c | a -> c where
-    neighbors :: a b -> c -> [(c, Float)]
+class Coordinate c => Graph a c | a -> c where
+    neighbors :: a -> c -> [(c, Float)]
 

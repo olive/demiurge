@@ -18,7 +18,8 @@ cabal-version:       >=1.10
 executable demiurge
   main-is:             Main.hs
   hs-source-dirs:      src
-  default-extensions:          GADTs, TypeSynonymInstances, FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies, NoMonomorphismRestriction, PatternSynonyms, RankNTypes
+  default-extensions:          GADTs, TypeSynonymInstances, FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies, NoMonomorphismRestriction, PatternSynonyms, RankNTypes, ScopedTypeVariables, FlexibleContexts
+
 
   -- other-modules:
   -- other-extensions:

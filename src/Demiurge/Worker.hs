@@ -1,6 +1,15 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Demiurge.Worker where
 
+import Prelude hiding (any)
+import Control.Applicative((<$>))
+import Data.Foldable(any)
+import Data.Maybe
 
+import Demiurge.Data.Graph
+import Demiurge.Data.Coordinate
+import qualified Demiurge.Pathing.Dijkstra as D
+import qualified Demiurge.Tile as T
 import Demiurge.Common
 import Demiurge.Utils
 import qualified Demiurge.Data.Array3d as A3D
@@ -9,17 +18,18 @@ data Job = Builder | Gatherer | Miner
 
 data Major
 data Minor
-data AGoal a where
-    Build :: XYZ -> AGoal Major
-    Move :: XYZ -> AGoal Minor
-    Mine :: XYZ -> AGoal Major
-    Stock :: XYZ -> XYZ -> AGoal Major
+data AGoal a c where
+    Build :: c -> AGoal Major c
+    Move :: c -> AGoal Minor c
+    Mine :: c -> AGoal Major c
+    Stock :: c -> c -> AGoal Major c
 
-data ATask = Pickup | Drop | Path [XYZ] | Navigate XYZ XYZ
+
+data ATask c = Pickup | Drop | Path [c] | Navigate c c
 data APlan p = APlan [p] [p] (Maybe (APlan p))
 data PlanList p = PlanList [p]
-data Tile
-data AWorld = AWorld (A3D.Array3d Tile)
+
+data AWorld = AWorld (A3D.Array3d T.Tile)
 data WorldState w c s p g t = WorldState w s [EWorker c g t]
 
 type NonEmpty t = (t, [t])
@@ -192,20 +202,56 @@ data TaskPermission c g t where
     Blocked :: EWorker c g t -> TaskPermission c g t
     Forbidden :: Reason -> TaskPermission c g t
 
-class Eq r => Resource r where
+class Coordinate c => World w c | w -> c where
+    getTile :: w -> c -> Maybe T.Tile
+    putTile :: w -> c -> T.Tile -> w
 
-class World w c | w -> c where
-    getTile :: w -> c -> Tile
-    putTile :: w -> c -> Tile -> w
-    resources :: Resource r => w -> c -> [r]
-    hasResource :: Resource r => w -> c -> r -> Bool
-    putResource :: Resource r => w -> c -> r -> w
-    modTile :: w -> c -> (Tile -> Tile) -> w
+    resources :: w -> c -> [T.Resource]
+    resources arr xy = fromMaybe T.emptyMs $ T.getResources <$> getTile arr xy
+    addResource :: w -> c -> T.Resource -> w
+    addResource arr xy r = modTile arr xy (T.addResource r)
+    hasResource :: w -> c -> T.Resource -> Bool
+    hasResource w xy r = elem r $ resources w xy
+    modTile :: w -> c -> (T.Tile -> T.Tile) -> w
+    modTile w xy f = let p = f <$> getTile w xy in
+                     fromMaybe w $ (putTile w xy)  <$> p
+
     isStandable :: w -> c -> Bool
+
     isWalkable :: w -> c -> Bool
+    isWalkable arr xy = any T.isWalkable (getTile arr xy)
+
     isFree :: w -> c -> Bool
+    isFree arr xy = any T.isFree (getTile arr xy)
+
     isWholeSolid :: w -> c -> Bool
+    isWholeSolid arr xy = any T.isWholeSolid (getTile arr xy)
+
     pfind :: w -> c -> c -> Either Reason [c]
+
+
+instance Graph (A3D.Array3d T.Tile) XYZ  where
+    neighbors arr (x, y, z) =
+        let ns = [(x-1, y, z),
+                  (x+1, y, z),
+                  (x, y+1, z),
+                  (x, y-1, z)]
+        in
+        (\w -> (w, 1)) <$> filter (isStandable arr) ns
+
+instance World (A3D.Array3d T.Tile) XYZ where
+    getTile = A3D.get
+    putTile = A3D.put
+
+    isStandable arr xy = any id $ do
+        t <- getTile arr xy
+        return $ T.isStandable t $ getTile arr (xy |+| (0,0,-1))
+
+    pfind arr src dst =
+        case D.pfind arr src dst of
+            Just path -> Right path
+            Nothing -> Left "No Path"
+
 class Same t => Task t where
     -- perform must increment the task for worker and if necessary
     -- set them to unemployed
@@ -217,6 +263,9 @@ class Same t => Task t where
             -> Worker c g t Working
             -> WorldState w c s p g t
             -> TaskPermission c g t
+
+
+
 
 class Same g => Goal g where
     parent :: (Plan p) => g -> p
