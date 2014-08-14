@@ -87,7 +87,9 @@ putSchema s (WorldState w _ wks) = WorldState w s wks
 getWorkers :: WorldState w s p g t -> [EWorker g t]
 getWorkers (WorldState _ _ wks) = wks
 
-setWorkers :: WorldState w s p g t -> [EWorker g t] -> WorldState w s p g t
+setWorkers :: WorldState w s p g t
+           -> [EWorker g t]
+           -> WorldState w s p g t
 setWorkers (WorldState w s _) wks = WorldState w s wks
 
 
