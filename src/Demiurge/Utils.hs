@@ -9,6 +9,9 @@ select f t b = if b then t else f
 (|@|) :: (a, b) -> c -> (a, b, c)
 (|@|) (x, y) z = (x, y, z)
 
+(.:) :: (a -> b) -> (x -> y -> a) -> x -> y -> b
+(.:) = (.) . (.)
+
 fold3 :: [a] -> b -> c -> (a -> b -> c -> (a, b, c)) -> ([a], b, c)
 fold3 xs w y f = foldl (\(acc, w', y') x -> let (p, q, r) = f x w' y' in (p:acc, q, r)) ([], w, y) xs
 
