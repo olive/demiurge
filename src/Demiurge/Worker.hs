@@ -35,10 +35,12 @@ data Worker g t k where
     Employed :: (Task t, Goal g)
              => Int -> XYZ -> Job -> g -> NonEmpty t -> Worker g t Working
     Unemployed :: (Task t, Goal g)
-               => Int -> XYZ -> Job -> Worker g t Idle
+               => Int -> XYZ -> Job -> Reason -> Worker g t Idle
 
 data EWorker g t = IdleWorker (Worker g t Idle)
                  | WorkingWorker (Worker g t Working)
+
+type Reason = String
 
 packW :: Worker g t Working -> EWorker g t
 packW = WorkingWorker
@@ -46,9 +48,15 @@ packW = WorkingWorker
 packI :: Worker g t Idle -> EWorker g t
 packI = IdleWorker
 
+pack :: Worker g t k -> EWorker g t
+pack e@(Employed _ _ _ _ _) = packW e
+pack u@(Unemployed _ _ _ _) = packI u
+
+makeIdle :: Reason -> Worker g t Working -> Worker g t Idle
+makeIdle rsn (Employed i pos job _ _ ) = Unemployed i pos job rsn
 getId :: EWorker g t -> Int
 getId (WorkingWorker (Employed i _ _ _ _)) = i
-getId (IdleWorker (Unemployed i _ _ )) = i
+getId (IdleWorker (Unemployed i _ _ _)) = i
 
 tasks :: Worker g t Working -> NonEmpty t
 tasks (Employed _ _ _ _ tsks) = tsks
@@ -61,7 +69,7 @@ setGoal :: (Task t, Goal g)
         -> NonEmpty t
         -> Worker g t Idle
         -> Worker g t Working
-setGoal gol tsks (Unemployed i pos job) = Employed i pos job gol tsks
+setGoal gol tsks (Unemployed i pos job _) = Employed i pos job gol tsks
 
 putWorker :: EWorker g t
           -> WorldState w s p g t
@@ -110,10 +118,10 @@ coordinateTasks = do
 
 
 processWorker :: (Schema s, Task t, Goal g, Plan p) => WorldState w s p g t -> EWorker g t -> WorldState w s p g t
-processWorker ws (WorkingWorker w@(Employed _ _ _ _ _)) =
-    performTasks ws w
-processWorker ws (IdleWorker w@(Unemployed _ _ _)) =
-    findGoal ws w
+processWorker ws (WorkingWorker wk) =
+    performTasks ws wk
+processWorker ws (IdleWorker wk) =
+    findGoal ws wk
 
 
 findGoal :: (Schema s, Task t, Goal g, Plan p)
@@ -125,26 +133,48 @@ findGoal ws wk  = do
     let wk' = employ plan wk ws
     putWorker (packW wk') ws
 
-giveGoal :: Goal g => g -> Worker g t Idle -> Worker g t Working
-giveGoal gol wk@(Unemployed _ _ _) =
+giveGoal :: (Task t, Goal g) => g -> Worker g t Idle -> Worker g t Working
+giveGoal gol wk =
     let tsks = toOrder gol in
     setGoal gol tsks wk
 
-performTasks :: (Task t, Goal g)
+performTasks :: (Task t, Schema s, Goal g)
              => WorldState w s p g t
              -> Worker g t Working
              -> WorldState w s p g t
 performTasks ws wk@(Employed _ _ _ _ (t, _)) =
+    case allowed t wk ws of
+        Permitted -> let (wk', ws') = perform t wk ws in
+                     putWorker wk' ws'
+        Forbidden str -> let s = getSchema ws in
+                         let (s', wk') = surrender s (packW wk) str in
+                         let ws' = putSchema s' ws in
+                         putWorker wk' ws'
+        Blocked blk -> let ws' = jam blk ws in
+                       let ws'' = jam (packW wk) ws' in
+                       ws''
 
-    let (wk', ws') = perform t wk ws in
-    putWorker wk' ws'
+jam :: (Schema s, Goal g, Task t)
+    => EWorker g t
+    -> WorldState w s p g t
+    -> WorldState w s p g t
+jam (IdleWorker wk) ws =
+    let s = getSchema ws in
+    let moveCmd = move s in
+    let wk' = giveGoal moveCmd wk in
+    putWorker (packW wk') ws
+jam (WorkingWorker wk@(Employed _ _ _ _ _)) ws =
+    let s = getSchema ws in
+    let (s', wk') = surrender s (packW wk) "jam" in
+    jam wk' (putSchema s' ws)
+
 
 -- required that the current task has been complete
 incrementTask :: (Task t, Schema s) => Worker g t Working-> WS w s p g t
 incrementTask (Employed i pos job g tsks) = do
     case snd tsks of
         [] -> do
-          let nwk = IdleWorker (Unemployed i pos job)
+          let nwk = IdleWorker (Unemployed i pos job "Task Complete")
           mapSchema $ finish g
           post g
           sputWorker nwk
@@ -159,6 +189,11 @@ class Plan p where
            -> WorldState w s p g t
            -> Worker g t Working
 
+data TaskPermission g t where
+    Permitted :: TaskPermission g t
+    Blocked :: EWorker g t -> TaskPermission g t
+    Forbidden :: Reason -> TaskPermission g t
+
 class Same t => Task t where
     -- perform must increment the task for worker and if necessary
     -- set them to unemployed
@@ -169,6 +204,7 @@ class Same t => Task t where
     allowed :: t
             -> Worker g t Working
             -> WorldState w s p g t
+            -> TaskPermission g t
 
 class Same g => Goal g where
     toOrder :: (Task t) => g -> NonEmpty t
@@ -179,8 +215,9 @@ class Schema s where
     process :: s -> Worker g t k -> (s, Worker g t k)
     getPlan :: Plan p => s -> p
     finish :: g -> s -> s
-    surrender :: g -> s -> s
-
+    surrender :: s -> EWorker g t -> Reason -> (s, EWorker g t)
+    -- probably needs entity and world to know where to move to
+    move :: Goal g => s -> g
 instance Same (EWorker g t) where
     same w1 w2 = getId w1 == getId w2
 
