@@ -25,7 +25,7 @@ data AGoal a c where
     Stock :: c -> c -> AGoal Major c
 
 
-data ATask c = Pickup | Drop | Path [c] | Navigate c c
+data ATask c = Pickup | Drop | BuildWall | Path [c] | Navigate c c
 data APlan p = APlan [p] [p] (Maybe (APlan p))
 data PlanList p = PlanList [p]
 
@@ -33,6 +33,9 @@ data AWorld = AWorld (A3D.Array3d T.Tile)
 data WorldState w c s g t = WorldState w s [EWorker c g t]
 getWorld :: WorldState w c s g t -> w
 getWorld (WorldState w _ _) = w
+
+setWorld :: w -> WorldState w c s g t -> WorldState w c s g t
+setWorld w (WorldState _ s wks) = WorldState w s wks
 type NonEmpty t = (t, [t])
 
 data Working
@@ -59,6 +62,14 @@ isHolding (Unemployed _ _ _ rs _) = isJust rs
 getPos :: Worker c g t k -> c
 getPos (Employed _ pos _ _ _ _) = pos
 getPos (Unemployed _ pos _ _ _) = pos
+
+dropItem :: Worker c g t k -> Worker c g t k
+dropItem (Employed i pos job _ g tsk) = (Employed i pos job Nothing g tsk)
+dropItem (Unemployed i pos job _ rsn) = (Unemployed i pos job Nothing rsn)
+
+takeItem :: T.Resource -> Worker c g t k -> Worker c g t k
+takeItem r (Employed i pos job _ g tsk) = Employed i pos job (Just r) g tsk
+takeItem r (Unemployed i pos job _ rsn) = Unemployed i pos job (Just r) rsn
 
 data EWorker c g t = IdleWorker (Worker c g t Idle)
                    | WorkingWorker (Worker c g t Working)
@@ -163,7 +174,7 @@ performTasks :: (World w c, Task t, Schema s, Goal g)
              -> WorldState w c s g t
 performTasks ws wk@(Employed _ _ _ _ _ (t, _)) =
     case allowed t wk ws of
-        Permitted -> let (wk', ws') = perform t wk ws in
+        Permitted -> let (ws', wk') = perform t wk ws in
                      putWorker wk' ws'
         Forbidden str -> let s = getSchema ws in
                          let (s', wk') = surrender s (packW wk) str in
@@ -193,15 +204,16 @@ incrementTask :: (Task t, Schema s)
               -> Worker c g t Working
               -> WorldState w c s g t
 incrementTask ws wk@(Employed i pos job rs g tsks) = do
-    case snd tsks of
-        [] -> do
+    case (snd tsks, (isFinished . fst) tsks) of
+        ([], True) -> do
             let nwk = packI $ makeIdle "Task Complete" wk
             let s = getSchema ws
-            let ws' = putSchema (finish g s) ws
+            let ws' = putSchema (complete g s) ws
             putWorker nwk ws'
-        (x:xs) -> do
+        ((x:xs), True) -> do
             let nwk = WorkingWorker (Employed i pos job rs g (x, xs))
             putWorker nwk ws
+        _ -> ws
 
 incrementTasks :: (Task t, Schema s)
                => WorldState w c s g t
@@ -213,7 +225,7 @@ incrementTasks ws =
           incr st _ = st
 
 class Plan p where
-    isFinished :: p -> Bool
+    --isFinished :: p -> Bool
 
 class Coordinate c => World w c | w -> c where
     getTile :: w -> c -> Maybe T.Tile
@@ -221,13 +233,19 @@ class Coordinate c => World w c | w -> c where
 
     resources :: w -> c -> [T.Resource]
     resources arr xy = fromMaybe T.emptyMs $ T.getResources <$> getTile arr xy
+
     addResource :: w -> c -> T.Resource -> w
     addResource arr xy r = modTile arr xy (T.addResource r)
+
+    takeResource :: w -> c -> T.Resource -> (Worker c g t k -> (w, Worker c g t k))
+    takeResource arr xy r wk = (modTile arr xy (T.takeResource r), takeItem r wk)
+
     hasResource :: w -> c -> T.Resource -> Bool
     hasResource w xy r = elem r $ resources w xy
+
     modTile :: w -> c -> (T.Tile -> T.Tile) -> w
     modTile w xy f = let p = f <$> getTile w xy in
-                     fromMaybe w $ (putTile w xy)  <$> p
+                     fromMaybe w $ (putTile w xy) <$> p
 
     isStandable :: w -> c -> Bool
 
@@ -266,13 +284,16 @@ instance World (A3D.Array3d T.Tile) XYZ where
             Nothing -> Left "No Path"
 
 class Task t where
+    isFinished :: t -> Bool
+    finish :: t -> t
+
     -- perform must increment the task for worker and if necessary
     -- set them to unemployed
     perform :: (World w c)
             => t
             -> Worker c g t Working
             -> WorldState w c s g t
-            -> (EWorker c g t, WorldState w c s g t)
+            -> (WorldState w c s g t, EWorker c g t)
     allowed :: (World w c)
             => t
             -> Worker c g t Working
@@ -280,7 +301,11 @@ class Task t where
             -> TaskPermission c g t
 
 instance Coordinate c => Task (ATask c) where
-    perform Pickup emp ws = undefined
+    isFinished Pickup = True
+    finish Pickup = Pickup
+    perform Pickup emp ws =
+        let (w', wk') = takeResource (getWorld ws) (getPos emp) T.Stone emp in
+        (setWorld w' ws, pack wk')
     allowed Pickup emp ws =
         if (not.null) $ resources (getWorld ws) (getPos emp)
         then Permitted
@@ -293,7 +318,7 @@ class Schema s where
     mkTasks :: s -> Worker c g t k -> w -> g -> NonEmpty t
     process :: s -> Worker c g t k -> (s, Worker c g t k)
     getPlan :: Plan p => s -> p
-    finish :: g -> s -> s
+    complete :: g -> s -> s
     surrender :: s -> EWorker c g t -> Reason -> (s, EWorker c g t)
     -- probably needs entity and world to know where to move to
     move :: Goal g => s -> g

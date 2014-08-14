@@ -1,5 +1,5 @@
 module Demiurge.Tile(
-    Resource,
+    Resource(..),
     Tile,
     isStandable,
     isFree,
@@ -7,6 +7,7 @@ module Demiurge.Tile(
     isWholeSolid,
     getResources,
     addResource,
+    takeResource,
     emptyMs
 ) where
 data Resource = Stone deriving Eq
@@ -42,6 +43,10 @@ getResources (Tile _ rs) = rs
 
 addResource :: Resource -> (Tile -> Tile)
 addResource r (Tile ts rs) = Tile ts (r:rs)
+
+takeResource :: Resource -> (Tile -> Tile)
+takeResource _ (Tile ts (_:rs)) = Tile ts rs
+takeResource _ t = t
 
 emptyMs :: MultiSet a
 emptyMs = []
