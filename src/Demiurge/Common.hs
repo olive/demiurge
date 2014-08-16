@@ -10,3 +10,7 @@ rectToBorder k (Rect x y width height) = do
                  j <- [y..y+height],
                  i == 0 || j == 0 || i == width - 1 || j == height - 1]
 
+
+
+class Same a where
+    same :: a -> a -> Bool

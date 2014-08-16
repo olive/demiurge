@@ -1,19 +1,18 @@
 ﻿module Main where
 
 import Control.Monad.Random
+
+
 import Antiqua.Game
-import Antiqua.Graphics.Assets
-import Antiqua.Graphics.Window
 import Antiqua.Sound.Audio
+import Antiqua.Graphics.Window
+import Antiqua.Graphics.Assets
 import qualified Antiqua.Input.Controls as C
 
 import Demiurge.Common()
-import Demiurge.Data.Graph()
-import Demiurge.Pathing.Dijkstra()
 import Demiurge.Data.Coordinate()
 import Demiurge.Utils()
-import Demiurge.Worker
-
+import Demiurge.World
 
 
 mainLoop :: IO ()

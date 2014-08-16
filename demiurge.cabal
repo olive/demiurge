@@ -22,9 +22,9 @@ executable demiurge
                      , RankNTypes
                      , ScopedTypeVariables
                      , FlexibleContexts
+                     , TypeFamilies
   build-depends:       base >=4.7 && <4.8
                      , containers
-                     , PSQueue
                      , vector
                      , mtl
                      , async

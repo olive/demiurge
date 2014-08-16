@@ -1,5 +1,7 @@
 module Demiurge.Utils where
 
+import Demiurge.Common
+
 select :: a -> a -> Bool -> a
 select f t b = if b then t else f
 
@@ -34,10 +36,6 @@ splitFind g xs =
 headOpt :: [a] -> Maybe a
 headOpt (x:_) = Just x
 headOpt _ = Nothing
-
-
-class Same a where
-    same :: a -> a -> Bool
 
 updateAt :: Same a => a -> [a] -> [a]
 updateAt xx yys =

@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Demiurge.Worker where
+
+module Demiurge.World where
 
 import Prelude hiding (any)
 import Control.Monad.Random
@@ -14,54 +15,20 @@ import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Graphics.Window
 import Antiqua.Graphics.Assets
 import qualified Antiqua.Input.Controls as C
+import Antiqua.Common
+import Antiqua.Data.Graph
+import qualified Antiqua.Pathing.Dijkstra as D
 
-import Demiurge.Data.Graph
 import Demiurge.Data.Coordinate
-import qualified Demiurge.Pathing.Dijkstra as D
 import qualified Demiurge.Tile as T
 import Demiurge.Common
 import Demiurge.Utils
 import qualified Demiurge.Data.Array3d as A3D
+import Demiurge.Goal
+
 
 data Job = Builder | Gatherer | Miner
 
-data Major
-data Minor
-
-type PlanID = Int
-data AGoal a c where
-    Build :: Int -> PlanID -> c -> AGoal Major c
-    Move ::  Int -> PlanID -> c -> AGoal Minor c
-    Mine ::  Int -> PlanID -> c -> AGoal Major c
-    Stock :: Int -> PlanID -> c -> c -> AGoal Major c
-
-getGoalID :: AGoal a c -> Int
-getGoalID (Build i _ _) = i
-getGoalID (Move i _ _) = i
-getGoalID (Mine i _ _) = i
-getGoalID (Stock i _ _ _) = i
-
-
-getParent :: AGoal a c -> PlanID
-getParent (Build _ i _) = i
-getParent (Move _ i _) = i
-getParent (Mine _ i _) = i
-getParent (Stock _ i _ _) = i
-
-
-data ATask c = Pickup | Drop | BuildWall | Path [c] | Navigate c c
-data APlan p = APlan [p] [p] (Maybe (APlan p))
-data PlanList p = PlanList [p]
-
-data AWorld = AWorld (A3D.Array3d T.Tile)
-data WorldState w c s g t = WorldState w s [EWorker c g t]
-
-getWorld :: WorldState w c s g t -> w
-getWorld (WorldState w _ _) = w
-
-setWorld :: w -> WorldState w c s g t -> WorldState w c s g t
-setWorld w (WorldState _ s wks) = WorldState w s wks
-type NonEmpty t = (t, [t])
 
 data Working
 data Idle
@@ -124,12 +91,22 @@ tasks (Employed _ _ _ _ _ tsks) = tsks
 goal :: Worker c g t Working -> g
 goal (Employed _ _ _ _ gol _) = gol
 
-setGoal :: (Task t, Goal g)
-        => g
-        -> NonEmpty t
-        -> Worker c g t Idle
-        -> Worker c g t Working
-setGoal gol tsks (Unemployed i pos job rs _) = Employed i pos job rs gol tsks
+
+data APlan p = APlan [p] [p] (Maybe (APlan p))
+
+distribute :: APlan p -> Worker c g t Idle -> (APlan p, Worker c g t Working)
+distribute = undefined
+
+data PlanList p = PlanList (NonEmpty p)
+
+data AWorld = AWorld (A3D.Array3d T.Tile)
+data WorldState w c s g t = WorldState w s [EWorker c g t]
+
+getWorld :: WorldState w c s g t -> w
+getWorld (WorldState w _ _) = w
+
+setWorld :: w -> WorldState w c s g t -> WorldState w c s g t
+setWorld w (WorldState _ s wks) = WorldState w s wks
 
 putWorker :: EWorker c g t
           -> WorldState w c s g t
@@ -157,6 +134,15 @@ setWorkers :: WorldState w c s g t
 setWorkers (WorldState w s _) wks = WorldState w s wks
 
 
+setGoal :: (Task t, Goal g)
+        => g
+        -> NonEmpty t
+        -> Worker c g t Idle
+        -> Worker c g t Working
+setGoal gol tsks (Unemployed i pos job rs _) = Employed i pos job rs gol tsks
+
+
+
 coordinateTasks :: (World w c, Schema s, Task t, Goal g)
                 => WorldState w c s g t
                 -> WorldState w c s g t
@@ -181,8 +167,8 @@ findGoal :: (Schema s, Task t, Goal g)
          -> WorldState w c s g t
 findGoal ws wk  = do
     let s = getSchema ws
-    let wk' = employ s wk ws
-    putWorker (packW wk') ws
+    let (wk', ws') = employ s wk ws
+    putWorker (packW wk') ws'
 
 giveGoal :: (Task t, Goal g, Schema s)
          => g
@@ -249,8 +235,37 @@ incrementTasks ws =
     where incr st (WorkingWorker wk) = incrementTask st wk
           incr st _ = st
 
-class Plan p where
-    --isFinished :: p -> Bool
+
+data ATask c = Pickup | Drop | BuildWall | Path [c] | Navigate c c
+
+class Task t where
+    isFinished :: t -> Bool
+    finish :: t -> t
+
+    -- perform must increment the task for worker and if necessary
+    -- set them to unemployed
+    perform :: (World w c)
+            => t
+            -> Worker c g t Working
+            -> WorldState w c s g t
+            -> (WorldState w c s g t, EWorker c g t)
+    allowed :: (World w c)
+            => t
+            -> Worker c g t Working
+            -> WorldState w c s g t
+            -> TaskPermission c g t
+
+instance Coordinate c => Task (ATask c) where
+    isFinished Pickup = True
+    finish Pickup = Pickup
+    perform Pickup emp ws =
+        let (w', wk') = takeResource (getWorld ws) (getPos emp) T.Stone emp in
+        (setWorld w' ws, pack wk')
+    allowed Pickup emp ws =
+        if (not.null) $ resources (getWorld ws) (getPos emp)
+        then Permitted
+        else Forbidden "test"
+
 
 class Coordinate c => World w c | w -> c where
     getTile :: w -> c -> Maybe T.Tile
@@ -308,59 +323,33 @@ instance World (A3D.Array3d T.Tile) XYZ where
             Just path -> Right path
             Nothing -> Left "No Path"
 
-class Task t where
-    isFinished :: t -> Bool
-    finish :: t -> t
 
-    -- perform must increment the task for worker and if necessary
-    -- set them to unemployed
-    perform :: (World w c)
-            => t
-            -> Worker c g t Working
-            -> WorldState w c s g t
-            -> (WorldState w c s g t, EWorker c g t)
-    allowed :: (World w c)
-            => t
-            -> Worker c g t Working
-            -> WorldState w c s g t
-            -> TaskPermission c g t
 
-instance Coordinate c => Task (ATask c) where
-    isFinished Pickup = True
-    finish Pickup = Pickup
-    perform Pickup emp ws =
-        let (w', wk') = takeResource (getWorld ws) (getPos emp) T.Stone emp in
-        (setWorld w' ws, pack wk')
-    allowed Pickup emp ws =
-        if (not.null) $ resources (getWorld ws) (getPos emp)
-        then Permitted
-        else Forbidden "test"
-
-class Same g => Goal g where
-    parent :: g -> PlanID
-
-instance Same (AGoal g c) where
-    same g1 g2 = getGoalID g1 == getGoalID g2
-
-instance Goal (AGoal g c) where
-    parent = getParent
 class Schema s where
     mkTasks :: s -> Worker c g t Idle -> w -> NonEmpty t
-    complete :: Goal g => g -> s -> s
+    complete :: g -> s -> s
     surrender :: s -> EWorker c g t -> Reason -> (s, EWorker c g t)
     -- probably needs entity and world to know where to move to
-    move :: Goal g => s -> g
+    move :: s -> g
     employ :: s
            -> Worker c g t Idle
            -> WorldState w c s g t
-           -> Worker c g t Working
+           -> (Worker c g t Working, WorldState w c s g t)
+
+putPlan :: (g ~ (AGoal k XYZ), p ~ (PlanList (APlan g)))
+        => (APlan g)
+        -> WorldState w c p g t
+        -> WorldState w c p g t
+putPlan pl (WorldState w (PlanList (_,xs)) wks) = WorldState w (PlanList (pl,xs)) wks
 
 instance Schema (PlanList (APlan (AGoal k XYZ))) where
     mkTasks _ _ _ = undefined
     complete _ _ = undefined
     surrender _ _ _ = undefined
     move _ = undefined
-    employ _ _ _ = undefined
+    employ (PlanList (p, _)) idle ws =
+        let (np, wk) = distribute p idle in
+        (wk, putPlan np ws)
 instance Same (EWorker c g t) where
     same w1 w2 = getId w1 == getId w2
 
