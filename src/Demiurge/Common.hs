@@ -2,8 +2,6 @@ module Demiurge.Common where
 
 type XYZ = (Int,Int,Int)
 
-type XY = (Int,Int)
-
 data Rect = Rect Int Int Int Int
 
 rectToBorder :: Int -> Rect -> [XYZ]

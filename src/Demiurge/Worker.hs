@@ -18,11 +18,26 @@ data Job = Builder | Gatherer | Miner
 
 data Major
 data Minor
+
+type PlanID = Int
 data AGoal a c where
-    Build :: c -> AGoal Major c
-    Move :: c -> AGoal Minor c
-    Mine :: c -> AGoal Major c
-    Stock :: c -> c -> AGoal Major c
+    Build :: Int -> PlanID -> c -> AGoal Major c
+    Move :: Int ->  PlanID -> c -> AGoal Minor c
+    Mine :: Int ->  PlanID -> c -> AGoal Major c
+    Stock :: Int -> PlanID -> c -> c -> AGoal Major c
+
+getGoalID :: AGoal a c -> Int
+getGoalID (Build i _ _) = i
+getGoalID (Move i _ _) = i
+getGoalID (Mine i _ _) = i
+getGoalID (Stock i _ _ _) = i
+
+
+getParent :: AGoal a c -> PlanID
+getParent (Build _ i _) = i
+getParent (Move _ i _) = i
+getParent (Mine _ i _) = i
+getParent (Stock _ i _ _) = i
 
 
 data ATask c = Pickup | Drop | BuildWall | Path [c] | Navigate c c
@@ -165,7 +180,7 @@ giveGoal :: (Task t, Goal g, Schema s)
          -> WorldState w c s g t
          -> Worker c g t Working
 giveGoal gol wk (WorldState w s _) =
-    let tsks = mkTasks s wk w gol in
+    let tsks = mkTasks s wk w in
     setGoal gol tsks wk
 
 performTasks :: (World w c, Task t, Schema s, Goal g)
@@ -312,10 +327,15 @@ instance Coordinate c => Task (ATask c) where
         else Forbidden "test"
 
 class Same g => Goal g where
-    parent :: (Plan p) => g -> p
+    parent :: g -> PlanID
 
+instance Same (AGoal g c) where
+    same g1 g2 = getGoalID g1 == getGoalID g2
+
+instance Goal (AGoal g c) where
+    parent = getParent
 class Schema s where
-    mkTasks :: s -> Worker c g t k -> w -> g -> NonEmpty t
+    mkTasks :: s -> Worker c g t Idle -> w -> NonEmpty t
     process :: s -> Worker c g t k -> (s, Worker c g t k)
     getPlan :: Plan p => s -> p
     complete :: g -> s -> s
@@ -327,8 +347,14 @@ class Schema s where
            -> WorldState w c s g t
            -> Worker c g t Working
 
+instance Schema (PlanList (APlan (AGoal k XYZ))) where
+    mkTasks (PlanList pls) (Unemployed _ _ _ _ _) world = undefined
 instance Same (EWorker c g t) where
     same w1 w2 = getId w1 == getId w2
+
+mkWorld :: (gg ~ AGoal k XYZ)
+        => WorldState (A3D.Array3d T.Tile) XYZ (PlanList (APlan gg)) gg (ATask XYZ)
+mkWorld = undefined
 
 update :: (World w c, Goal g, Schema s, Task t)
        => WorldState w c s g t

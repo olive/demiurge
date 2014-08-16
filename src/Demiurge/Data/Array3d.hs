@@ -17,7 +17,7 @@ import Control.Monad
 import qualified Data.Vector as Vec
 
 import Demiurge.Common
-import qualified Demiurge.Data.Array2d as A2D
+import qualified Antiqua.Data.Array2d as A2D
 
 type Col = Int
 type Row = Int
