@@ -2,9 +2,18 @@
 module Demiurge.Worker where
 
 import Prelude hiding (any)
+import Control.Monad.Random
 import Control.Applicative((<$>))
 import Data.Foldable(any)
 import Data.Maybe
+
+import Antiqua.Game
+import Antiqua.Graphics.Renderer
+import qualified Antiqua.Graphics.TileRenderer as TR
+import qualified Antiqua.Data.Array2d as A2D
+import Antiqua.Graphics.Window
+import Antiqua.Graphics.Assets
+import qualified Antiqua.Input.Controls as C
 
 import Demiurge.Data.Graph
 import Demiurge.Data.Coordinate
@@ -22,8 +31,8 @@ data Minor
 type PlanID = Int
 data AGoal a c where
     Build :: Int -> PlanID -> c -> AGoal Major c
-    Move :: Int ->  PlanID -> c -> AGoal Minor c
-    Mine :: Int ->  PlanID -> c -> AGoal Major c
+    Move ::  Int -> PlanID -> c -> AGoal Minor c
+    Mine ::  Int -> PlanID -> c -> AGoal Major c
     Stock :: Int -> PlanID -> c -> c -> AGoal Major c
 
 getGoalID :: AGoal a c -> Int
@@ -46,6 +55,7 @@ data PlanList p = PlanList [p]
 
 data AWorld = AWorld (A3D.Array3d T.Tile)
 data WorldState w c s g t = WorldState w s [EWorker c g t]
+
 getWorld :: WorldState w c s g t -> w
 getWorld (WorldState w _ _) = w
 
@@ -336,9 +346,7 @@ instance Goal (AGoal g c) where
     parent = getParent
 class Schema s where
     mkTasks :: s -> Worker c g t Idle -> w -> NonEmpty t
-    process :: s -> Worker c g t k -> (s, Worker c g t k)
-    getPlan :: Plan p => s -> p
-    complete :: g -> s -> s
+    complete :: Goal g => g -> s -> s
     surrender :: s -> EWorker c g t -> Reason -> (s, EWorker c g t)
     -- probably needs entity and world to know where to move to
     move :: Goal g => s -> g
@@ -348,16 +356,47 @@ class Schema s where
            -> Worker c g t Working
 
 instance Schema (PlanList (APlan (AGoal k XYZ))) where
-    mkTasks (PlanList pls) (Unemployed _ _ _ _ _) world = undefined
+    mkTasks _ _ _ = undefined
+    complete _ _ = undefined
+    surrender _ _ _ = undefined
+    move _ = undefined
+    employ _ _ _ = undefined
 instance Same (EWorker c g t) where
     same w1 w2 = getId w1 == getId w2
 
+
+
+instance Drawable (WorldState (A3D.Array3d T.Tile) c s g t) where
+    draw (WorldState world _ _) tex = do
+        let level = 0
+        let (Just layer) = A3D.getLayer world level
+
+        let ts = Tileset 16 16 16 16
+        let ren = Renderer tex ts
+        let tr = TR.empty
+        render ren (A2D.foldl (TR.<+) tr (T.render <$> layer))
+
+
+
+instance (C.Control a, RandomGen rng, Goal g, Schema s, Task t, World w c) => Game (WorldState w c s g t) (C.Controls a, Assets, Window) rng where
+    runFrame g@(WorldState w s wks) _ rng = do
+        runRand (thing g) rng
+        where thing :: (rng' ~ rng) => WorldState w c s g t -> Rand rng' (WorldState w c s g t)
+              thing _ = do
+                  _ :: Int <- getRandomR (0, 10)
+                  return $ update (WorldState w s wks)
+
 mkWorld :: (gg ~ AGoal k XYZ)
         => WorldState (A3D.Array3d T.Tile) XYZ (PlanList (APlan gg)) gg (ATask XYZ)
-mkWorld = undefined
+mkWorld =
+    let plans = PlanList [] in
+    let world = A3D.tabulate 10 10 10 $ (\_ -> T.Tile T.WholeSolid []) in
+    WorldState world plans []
 
 update :: (World w c, Goal g, Schema s, Task t)
        => WorldState w c s g t
        -> WorldState w c s g t
-update ws = update $ (incrementTasks . coordinateTasks) ws
+update ws =
+    (incrementTasks . coordinateTasks) ws
+
 
