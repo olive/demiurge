@@ -21,8 +21,16 @@ data TileState = WholeSolid | FloorSolid | Stair | Free deriving Eq
 type MultiSet a = [a]
 data Tile = Tile TileState (MultiSet Resource)
 
-render :: Tile -> T.Tile CP437
-render (Tile _ _) = T.Tile C'DoubleQuote black darkGreen
+render :: Tile -> Maybe Tile -> T.Tile CP437
+render (Tile tt _) below =
+    case (tt, below) of
+        (WholeSolid,_) -> T.Tile (:≡)  darkGrey grey
+        (FloorSolid,_) -> T.Tile C'DoubleQuote darkGreen green
+        (Stair,_) -> T.Tile C'X black brown
+        (Free, Just (Tile Stair _)) -> T.Tile C'v black brown
+        (Free, Just (t@(Tile FloorSolid _))) -> T.Tile (:.) black $ T.getFg $ render t Nothing
+        (Free, _) -> T.Tile C'Space black black
+
 
 getState :: Tile -> TileState
 getState (Tile ts _) = ts

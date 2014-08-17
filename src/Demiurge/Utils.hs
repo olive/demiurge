@@ -2,6 +2,12 @@ module Demiurge.Utils where
 
 import Demiurge.Common
 
+clamp :: Ord a => a -> a -> a -> a
+clamp mn mx value
+    | value < mn = mn
+    | value > mx = mx
+    | otherwise = value
+
 select :: a -> a -> Bool -> a
 select f t b = if b then t else f
 
@@ -45,3 +51,6 @@ updateAt xx yys =
         helper x acc [] = x:acc
     in
     helper xx [] yys
+
+drop3 :: (a, b, c) -> (a, b)
+drop3 (x, y, _) = (x, y)

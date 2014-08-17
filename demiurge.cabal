@@ -22,7 +22,9 @@ executable demiurge
                      , RankNTypes
                      , ScopedTypeVariables
                      , FlexibleContexts
-                     , TypeFamilies
+                     , TupleSections
+
+
   build-depends:       base >=4.7 && <4.8
                      , containers
                      , vector

@@ -1,7 +1,7 @@
 ﻿module Main where
 
 import Control.Monad.Random
-
+import Data.Map as Map
 
 import Antiqua.Game
 import Antiqua.Sound.Audio
@@ -15,14 +15,20 @@ import Demiurge.Utils()
 import Demiurge.World
 
 
-mainLoop :: IO ()
-mainLoop = do
+enterLoop :: IO ()
+enterLoop = do
+    let cols = 32
+    let rows = 32
+    let layers = 10
     win <- createWindow 512 512 "Antiqua Prime"
     --let controls = C.Controls [C.mkTriggerAggregate [C.KeyTrigger GLFW.Key'Space]] :: C.Controls C.TriggerAggregate
-    let controls = C.Controls [] :: C.Controls C.TriggerAggregate
+    let zUp = C.mkTriggerAggregate [C.WheelTrigger 1]
+    let zDown = C.mkTriggerAggregate [C.WheelTrigger (-1)]
+    let controls = C.Controls (Map.fromList [(CK'ZDown, zDown),
+                                             (CK'ZUp, zUp)])
     tex <- loadTexture "../16x16.png"
     let assets = undefined :: Assets
-    let state = mkWorld
+    let state = mkState cols rows layers
 
     rng <- getStdGen
     gs <- mkUpdater state (controls, assets, win) rng
@@ -30,4 +36,4 @@ mainLoop = do
 
 main :: IO ()
 main = do
-    runAudio mainLoop
+    runAudio enterLoop
