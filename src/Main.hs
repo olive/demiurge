@@ -12,7 +12,7 @@ import qualified Antiqua.Input.Controls as C
 import Demiurge.Common()
 import Demiurge.Utils()
 import Demiurge.World
-
+import Demiurge.Input.ControlMap
 
 enterLoop :: IO ()
 enterLoop = do

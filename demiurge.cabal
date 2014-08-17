@@ -24,6 +24,12 @@ executable demiurge
                      , FlexibleContexts
                      , TupleSections
                      , DataKinds
+                     , KindSignatures
+                     , TypeOperators
+                     , PolyKinds
+                     , TypeFamilies
+                     , ConstraintKinds
+
 
 
   build-depends:       base >=4.7 && <4.8

@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Demiurge.World where
-
 import Prelude hiding (any)
 import Control.Applicative((<$>))
 import Data.Foldable(any)
@@ -23,6 +22,7 @@ import Antiqua.Data.CP437
 import Antiqua.Graphics.Color
 import Antiqua.Data.Coordinate
 
+import Demiurge.Input.ControlMap
 import qualified Demiurge.Tile as T
 import Demiurge.Common
 import qualified Demiurge.Data.Array3d as A3D
@@ -235,6 +235,9 @@ class Coordinate c => World w c | w -> c where
 
     pfind :: w -> c -> c -> Either Reason (NonEmpty c)
 
+
+
+
 instance World (A3D.Array3d T.Tile) XYZ where
     getTile = A3D.get
     putTile w xyz tile =
@@ -284,9 +287,7 @@ instance Drawable GameState where
         render ren (tr' <++< rwks)
 
 
-data ControlKey = CK'ZUp
-                | CK'ZDown
-    deriving (Eq, Ord)
+
 
 instance Game GameState (C.Controls ControlKey C.TriggerAggregate, Assets, Window) rng where
     runFrame (GameState v s w wks) (ctrls, _, _) g =
