@@ -28,6 +28,9 @@ import Demiurge.Common
 import qualified Demiurge.Data.Array3d as A3D
 import qualified Demiurge.Drawing.Renderable as Demiurge
 import Demiurge.Utils
+
+import Debug.Trace
+
 data Job = Builder | Gatherer | Miner
 
 data Task = Drop
@@ -38,41 +41,77 @@ data Task = Drop
 data Goal = Build XYZ
 type Reason = String
 
-data Working
-data Idle
+data Status = Working | Idle
 data Worker k where
-    Employed :: Int              -- | id
+    Employed :: (k ~ Status)
+             => Int              -- | id
              -> XYZ              -- | position
              -> Job              -- | job
              -> Maybe T.Resource -- | inventory
              -> Goal             -- | current goal
              -> NonEmpty Task    -- | current tasks
-             -> Worker Working
-    Unemployed :: Int              -- | id
+             -> Worker 'Working
+    Unemployed :: (k ~ Status)
+               => Int              -- | id
                -> XYZ              -- | position
                -> Job              -- | job
                -> Maybe T.Resource -- | inventory
                -> Reason           -- | why unemployed
-               -> Worker Idle
+               -> Worker 'Idle
 
-data EWorker = WorkingWorker (Worker Working)
-             | IdleWorker (Worker Idle)
+data EWorker = WorkingWorker (Worker 'Working)
+             | IdleWorker (Worker 'Idle)
 
+data TaskPermission = TaskPermitted
+                    | TaskBlocked EWorker
+                    | TaskForbidden Reason
 
 pack :: Worker t -> EWorker
 pack e@(Employed _ _ _ _ _ _) = WorkingWorker e
 pack u@(Unemployed _ _ _ _ _) = IdleWorker u
 
-shiftTask :: Worker Working -> EWorker
+shiftTask :: Worker 'Working -> EWorker
 shiftTask = undefined
 
-perform :: Task -> Worker Working -> Terrain -> (EWorker, Terrain)
+
+updateWorkers :: [EWorker] -> Terrain -> ([EWorker], Terrain)
+updateWorkers wks ter =
+    upOne [] wks ter
+    where upOne up (x:left) t =
+              let (wk', t') = processWorker x (up ++ left) t in
+              upOne (wk':up) left t'
+          upOne up [] t = (up, t)
+
+processWorker :: EWorker -> [EWorker] -> Terrain -> (EWorker, Terrain)
+processWorker (WorkingWorker wk) _ t =
+    let tsk = getTask wk in
+    case allowed tsk wk t of
+        TaskPermitted -> perform tsk wk t
+        TaskBlocked _ -> (pack $ unemploy "Blocked" wk, t)
+        TaskForbidden rsn -> (pack $ unemploy rsn wk, t)
+processWorker wk _ t = (wk, t)
+
+
+allowed :: Task -> Worker 'Working -> Terrain -> TaskPermission
+allowed Drop wk _
+    | (isJust . getResource) wk = TaskPermitted
+    | otherwise = TaskForbidden "Has no resource to drop"
+allowed Gather wk t
+    | (isJust . getResource) wk = TaskForbidden "Inventory is full"
+    | not $ hasResource t ((getPos . pack) wk) T.Stone = TaskForbidden "No resource here to pick up"
+    | otherwise = TaskPermitted
+allowed (Navigate _ _) _ _ = TaskPermitted
+allowed (Path (x, _)) _ t
+    | (not . isWalkable t) x = TaskForbidden "Can't walk there"
+    | otherwise = TaskPermitted
+
+perform :: Task -> Worker 'Working -> Terrain -> (EWorker, Terrain)
 perform Drop wk t =
     let wk' = shiftTask $ spendResource wk in
     let t' = addResource t (getPos wk') T.Stone in
     (wk', t')
 perform Gather wk t =
-    let wk' = shiftTask $ getResource T.Stone wk in
+    let wk' = shiftTask $ giveResource T.Stone wk in
     let t' = takeResource t (getPos wk') T.Stone in
     (wk', t')
 perform (Navigate src dst) wk t =
@@ -89,12 +128,19 @@ perform (Path (x, [])) wk t =
     let wk' = unemploy "Task Finished" $ setPos x wk in
     (pack wk', t)
 
-mapTask :: (Task -> Task) -> Worker Working -> Worker Working
+getTask :: Worker 'Working -> Task
+getTask (Employed _ _ _ _ _ tsk) = headOf tsk
+
+mapTask :: (Task -> Task) -> Worker 'Working -> Worker 'Working
 mapTask f (Employed i pos job rs gol tsk) = Employed i pos job rs gol (mapHead f tsk)
 
-unemploy :: Reason -> Worker Working -> Worker Idle
+unemploy :: Reason -> Worker 'Working -> Worker 'Idle
 unemploy rsn (Employed i pos job rs _ _) =
-    Unemployed i pos job rs rsn
+    trace rsn $ Unemployed i pos job rs rsn
+
+getResource :: Worker t -> Maybe T.Resource
+getResource (Employed _ _ _ r _ _) = r
+getResource (Unemployed _ _ _ r _) = r
 
 mapResource :: (T.Resource -> Maybe T.Resource) -> Worker t -> Worker t
 mapResource f (Employed i pos job r gol tsks) =
@@ -105,8 +151,8 @@ mapResource f (Unemployed i pos job r rsn) =
 spendResource :: Worker t -> Worker t
 spendResource = mapResource (\_ -> Nothing)
 
-getResource :: T.Resource -> Worker t -> Worker t
-getResource r = mapResource (\_ -> Just r)
+giveResource :: T.Resource -> Worker t -> Worker t
+giveResource r = mapResource (\_ -> Just r)
 
 getPos :: EWorker -> XYZ
 getPos (WorkingWorker (Employed _ pos _ _ _ _)) = pos
@@ -115,19 +161,24 @@ getPos (IdleWorker (Unemployed _ pos _ _ _)) = pos
 setPos :: XYZ -> Worker t -> Worker t
 setPos xyz (Employed i _ job rs gol tsk) = Employed i xyz job rs gol tsk
 setPos xyz (Unemployed i _ job rs rsn) = Unemployed i xyz job rs rsn
-jobToTile :: Job -> Antiqua.Tile CP437
-jobToTile j =
+
+workerToTile :: Job -> Status -> Antiqua.Tile CP437
+workerToTile j st =
+    let color = case st of
+                    Working -> yellow
+                    Idle -> white
+    in
     case j of
-        Builder -> Antiqua.Tile C'B black white
-        Gatherer -> Antiqua.Tile C'G black white
-        Miner -> Antiqua.Tile C'M black white
+        Builder -> Antiqua.Tile C'B black color
+        Gatherer -> Antiqua.Tile C'G black color
+        Miner -> Antiqua.Tile C'M black color
 
 instance Demiurge.Renderable EWorker where
     render (WorkingWorker (Employed _ pos job _ _ _)) tr =
-        let t1 = (drop3 pos, jobToTile job) in
+        let t1 = (drop3 pos, workerToTile job Working) in
         tr <+ t1
     render (IdleWorker (Unemployed _ pos job _ _)) tr =
-        let t1 = (drop3 pos, jobToTile job) in
+        let t1 = (drop3 pos, workerToTile job Idle) in
         let t2 = (drop3 $ pos ~~> D'North,  Antiqua.Tile (:?) black white) in
         tr <++ [t1, t2]
 
@@ -199,7 +250,7 @@ instance World (A3D.Array3d T.Tile) XYZ where
         case D.pfind arr src dst of
             Just (x:xs) -> Right (x, xs)
             Just [] -> Right (dst, [])
-            Nothing -> Left "No Path"
+            Nothing -> Left ("No Path from " ++ show src ++ show dst)
 
 
 instance Graph (A3D.Array3d T.Tile) XYZ  where
@@ -239,8 +290,9 @@ data ControlKey = CK'ZUp
 
 instance Game GameState (C.Controls ControlKey C.TriggerAggregate, Assets, Window) rng where
     runFrame (GameState v s w wks) (ctrls, _, _) g =
+        let (wks', w') = updateWorkers wks w in
         let nv = updateViewer v ctrls in
-        ((GameState nv s w wks), g)
+        ((GameState nv s w' wks'), g)
 
 
 mkState :: Int -> Int -> Int -> GameState
@@ -254,5 +306,5 @@ mkState cols rows layers =
          in
          T.Tile tt []
     in
-    let wk = IdleWorker (Unemployed 0 (0,0,1) Builder Nothing "Birthday") in
-    GameState view Schema tiles [wk]
+    let wk = Employed 0 (0,0,1) Builder Nothing undefined (Navigate (0,0,1) (10,10,1), []) in
+    GameState view Schema tiles [pack wk]

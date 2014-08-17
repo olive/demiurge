@@ -37,7 +37,7 @@ getState (Tile ts _) = ts
 
 isStandable :: Tile -> Maybe Tile -> Bool
 isStandable t Nothing = inState t [FloorSolid, Stair]
-isStandable t (Just r) = isState r Stair && inState t [Stair, Free]
+isStandable t (Just r) = isStandable t Nothing || isState r Stair && inState t [Stair, Free]
 
 inState :: Tile -> [TileState] -> Bool
 inState t = elem (getState t)

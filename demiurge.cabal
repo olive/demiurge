@@ -23,6 +23,7 @@ executable demiurge
                      , ScopedTypeVariables
                      , FlexibleContexts
                      , TupleSections
+                     , DataKinds
 
 
   build-depends:       base >=4.7 && <4.8
