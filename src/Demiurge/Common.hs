@@ -1,6 +1,27 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Demiurge.Common where
 
+import Antiqua.Data.Coordinate
+
 type XYZ = (Int,Int,Int)
+data Direction3 = D'North | D'South | D'East | D'West | D'Upward | D'Downward
+
+
+instance Coordinate XYZ where
+    (x, y, z) |+| (a, b, c) = (a + x, b + y, c + z)
+    (x, y, z) |-| (a, b, c) = (a - x, b - y, c - z)
+    neg (x, y, z) = (-x, -y, -z)
+
+
+instance Space XYZ Direction3 where
+    (x, y, z) ~~> D'North    = (x, y-1,z)
+    (x, y, z) ~~> D'South    = (x, y+1,z)
+    (x, y, z) ~~> D'West     = (x-1, y,z)
+    (x, y, z) ~~> D'East     = (x+1, y,z)
+    (x, y, z) ~~> D'Upward   = (x, y,z+1)
+    (x, y, z) ~~> D'Downward = (x, y,z-1)
+
+
 
 data Rect = Rect Int Int Int Int
 

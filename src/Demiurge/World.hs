@@ -21,8 +21,8 @@ import qualified Antiqua.Pathing.Dijkstra as D
 import qualified Antiqua.Graphics.Tile as Antiqua
 import Antiqua.Data.CP437
 import Antiqua.Graphics.Color
+import Antiqua.Data.Coordinate
 
-import Demiurge.Data.Coordinate
 import qualified Demiurge.Tile as T
 import Demiurge.Common
 import qualified Demiurge.Data.Array3d as A3D
@@ -30,10 +30,13 @@ import qualified Demiurge.Drawing.Renderable as Demiurge
 import Demiurge.Utils
 data Job = Builder | Gatherer | Miner
 
-data Task = Drop | Gather
+data Task = Drop
+          | Gather
+          | Navigate XYZ XYZ
+          | Path (NonEmpty XYZ)
+
 data Goal = Build XYZ
 type Reason = String
-
 
 data Working
 data Idle
@@ -55,10 +58,63 @@ data Worker k where
 data EWorker = WorkingWorker (Worker Working)
              | IdleWorker (Worker Idle)
 
+
+pack :: Worker t -> EWorker
+pack e@(Employed _ _ _ _ _ _) = WorkingWorker e
+pack u@(Unemployed _ _ _ _ _) = IdleWorker u
+
+shiftTask :: Worker Working -> EWorker
+shiftTask = undefined
+
+perform :: Task -> Worker Working -> Terrain -> (EWorker, Terrain)
+perform Drop wk t =
+    let wk' = shiftTask $ spendResource wk in
+    let t' = addResource t (getPos wk') T.Stone in
+    (wk', t')
+perform Gather wk t =
+    let wk' = shiftTask $ getResource T.Stone wk in
+    let t' = takeResource t (getPos wk') T.Stone in
+    (wk', t')
+perform (Navigate src dst) wk t =
+    let path = pfind t src dst in
+    let wk' = case path of
+                  Left reason -> pack $ unemploy reason wk
+                  Right p -> pack $ mapTask (\_ -> Path p) wk
+    in
+    (wk', t)
+perform (Path (x, y:yx)) wk t =
+    let wk' = mapTask (\_ -> Path (y, yx)) $ setPos x wk in
+    (pack wk', t)
+perform (Path (x, [])) wk t =
+    let wk' = unemploy "Task Finished" $ setPos x wk in
+    (pack wk', t)
+
+mapTask :: (Task -> Task) -> Worker Working -> Worker Working
+mapTask f (Employed i pos job rs gol tsk) = Employed i pos job rs gol (mapHead f tsk)
+
+unemploy :: Reason -> Worker Working -> Worker Idle
+unemploy rsn (Employed i pos job rs _ _) =
+    Unemployed i pos job rs rsn
+
+mapResource :: (T.Resource -> Maybe T.Resource) -> Worker t -> Worker t
+mapResource f (Employed i pos job r gol tsks) =
+    Employed i pos job (r >>= f) gol tsks
+mapResource f (Unemployed i pos job r rsn) =
+    Unemployed i pos job (r >>= f) rsn
+
+spendResource :: Worker t -> Worker t
+spendResource = mapResource (\_ -> Nothing)
+
+getResource :: T.Resource -> Worker t -> Worker t
+getResource r = mapResource (\_ -> Just r)
+
 getPos :: EWorker -> XYZ
 getPos (WorkingWorker (Employed _ pos _ _ _ _)) = pos
 getPos (IdleWorker (Unemployed _ pos _ _ _)) = pos
 
+setPos :: XYZ -> Worker t -> Worker t
+setPos xyz (Employed i _ job rs gol tsk) = Employed i xyz job rs gol tsk
+setPos xyz (Unemployed i _ job rs rsn) = Unemployed i xyz job rs rsn
 jobToTile :: Job -> Antiqua.Tile CP437
 jobToTile j =
     case j of
@@ -72,18 +128,13 @@ instance Demiurge.Renderable EWorker where
         tr <+ t1
     render (IdleWorker (Unemployed _ pos job _ _)) tr =
         let t1 = (drop3 pos, jobToTile job) in
-        let t2 = (drop3 $ pos |+| (0,-1,0),  Antiqua.Tile (:?) black white) in
+        let t2 = (drop3 $ pos ~~> D'North,  Antiqua.Tile (:?) black white) in
         tr <++ [t1, t2]
 
 
-
-takeItem :: T.Resource -> Worker k -> Worker k
-takeItem r (Employed i pos job _ gol tsks) = Employed i pos job (Just r) gol tsks
-takeItem r (Unemployed i pos job _ rsn) = Unemployed i pos job (Just r) rsn
-
 data Schema = Schema
-
-data GameState = GameState Viewer Schema (A3D.Array3d T.Tile) [EWorker]
+type Terrain = A3D.Array3d T.Tile
+data GameState = GameState Viewer Schema Terrain [EWorker]
 data Viewer = Viewer Int Int Int (Int,Int,Int)
 
 clampView :: Viewer -> Viewer
@@ -99,6 +150,7 @@ updateViewer (Viewer x y z clam) ctrls =
     let up = select 0 (-1) $ chkPress CK'ZUp in
     let down = select up 1 $ chkPress CK'ZDown in
     clampView $ Viewer x y (z + down) clam
+
 class Coordinate c => World w c | w -> c where
     getTile :: w -> c -> Maybe T.Tile
     putTile :: w -> c -> T.Tile -> w
@@ -109,8 +161,8 @@ class Coordinate c => World w c | w -> c where
     addResource :: w -> c -> T.Resource -> w
     addResource arr xy r = modTile arr xy (T.addResource r)
 
-    takeResource :: w -> c -> T.Resource -> Worker k -> (w, Worker k)
-    takeResource arr xy r wk = (modTile arr xy (T.takeResource r), takeItem r wk)
+    takeResource :: w -> c -> T.Resource -> w
+    takeResource arr xy r = modTile arr xy (T.takeResource r)
 
     hasResource :: w -> c -> T.Resource -> Bool
     hasResource w xy r = elem r $ resources w xy
@@ -130,19 +182,23 @@ class Coordinate c => World w c | w -> c where
     isWholeSolid :: w -> c -> Bool
     isWholeSolid arr xy = any T.isWholeSolid (getTile arr xy)
 
-    pfind :: w -> c -> c -> Either Reason [c]
+    pfind :: w -> c -> c -> Either Reason (NonEmpty c)
 
 instance World (A3D.Array3d T.Tile) XYZ where
     getTile = A3D.get
-    putTile = undefined--must modify tile above if WholeSolid
-
+    putTile w xyz tile =
+        let updated = A3D.put w xyz tile in
+        if any T.isFree (getTile w (xyz ~~> D'Upward))
+        then A3D.put updated (xyz ~~> D'Upward) $ T.Tile T.FloorSolid []
+        else updated
     isStandable arr xy = any id $ do
         t <- getTile arr xy
-        return $ T.isStandable t $ getTile arr (xy |+| (0,0,-1))
+        return $ T.isStandable t $ getTile arr (xy ~~> D'Downward)
 
     pfind arr src dst =
         case D.pfind arr src dst of
-            Just path -> Right path
+            Just (x:xs) -> Right (x, xs)
+            Just [] -> Right (dst, [])
             Nothing -> Left "No Path"
 
 
@@ -189,7 +245,7 @@ instance Game GameState (C.Controls ControlKey C.TriggerAggregate, Assets, Windo
 
 mkState :: Int -> Int -> Int -> GameState
 mkState cols rows layers =
-    let view = Viewer 0 0 0 (0,0,layers-1) in
+    let view = Viewer 0 0 1 (0,0,layers-1) in
     let tiles = A3D.tabulate cols rows layers $ \(_, _, z) ->
          let tt = case z of
                       0 -> T.WholeSolid
