@@ -17,9 +17,6 @@ import qualified Antiqua.Input.Controls as C
 import Antiqua.Common
 import Antiqua.Data.Graph
 import qualified Antiqua.Pathing.Dijkstra as D
-import qualified Antiqua.Graphics.Tile as Antiqua
-import Antiqua.Data.CP437
-import Antiqua.Graphics.Color
 import Antiqua.Data.Coordinate
 
 import Demiurge.Input.ControlMap
@@ -28,47 +25,9 @@ import Demiurge.Common
 import qualified Demiurge.Data.Array3d as A3D
 import qualified Demiurge.Drawing.Renderable as Demiurge
 import Demiurge.Utils
+import Demiurge.Worker
 
-import Debug.Trace
 
-data Job = Builder | Gatherer | Miner
-
-data Task = Drop
-          | Gather
-          | Navigate XYZ XYZ
-          | Path (NonEmpty XYZ)
-
-data Goal = Build XYZ
-type Reason = String
-
-data Status = Working | Idle
-data Worker k where
-    Employed :: (k ~ Status)
-             => Int              -- | id
-             -> XYZ              -- | position
-             -> Job              -- | job
-             -> Maybe T.Resource -- | inventory
-             -> Goal             -- | current goal
-             -> NonEmpty Task    -- | current tasks
-             -> Worker 'Working
-    Unemployed :: (k ~ Status)
-               => Int              -- | id
-               -> XYZ              -- | position
-               -> Job              -- | job
-               -> Maybe T.Resource -- | inventory
-               -> Reason           -- | why unemployed
-               -> Worker 'Idle
-
-data EWorker = WorkingWorker (Worker 'Working)
-             | IdleWorker (Worker 'Idle)
-
-data TaskPermission = TaskPermitted
-                    | TaskBlocked EWorker
-                    | TaskForbidden Reason
-
-pack :: Worker t -> EWorker
-pack e@(Employed _ _ _ _ _ _) = WorkingWorker e
-pack u@(Unemployed _ _ _ _ _) = IdleWorker u
 
 shiftTask :: Worker 'Working -> EWorker
 shiftTask = undefined
@@ -128,59 +87,6 @@ perform (Path (x, [])) wk t =
     let wk' = unemploy "Task Finished" $ setPos x wk in
     (pack wk', t)
 
-getTask :: Worker 'Working -> Task
-getTask (Employed _ _ _ _ _ tsk) = headOf tsk
-
-mapTask :: (Task -> Task) -> Worker 'Working -> Worker 'Working
-mapTask f (Employed i pos job rs gol tsk) = Employed i pos job rs gol (mapHead f tsk)
-
-unemploy :: Reason -> Worker 'Working -> Worker 'Idle
-unemploy rsn (Employed i pos job rs _ _) =
-    trace rsn $ Unemployed i pos job rs rsn
-
-getResource :: Worker t -> Maybe T.Resource
-getResource (Employed _ _ _ r _ _) = r
-getResource (Unemployed _ _ _ r _) = r
-
-mapResource :: (T.Resource -> Maybe T.Resource) -> Worker t -> Worker t
-mapResource f (Employed i pos job r gol tsks) =
-    Employed i pos job (r >>= f) gol tsks
-mapResource f (Unemployed i pos job r rsn) =
-    Unemployed i pos job (r >>= f) rsn
-
-spendResource :: Worker t -> Worker t
-spendResource = mapResource (\_ -> Nothing)
-
-giveResource :: T.Resource -> Worker t -> Worker t
-giveResource r = mapResource (\_ -> Just r)
-
-getPos :: EWorker -> XYZ
-getPos (WorkingWorker (Employed _ pos _ _ _ _)) = pos
-getPos (IdleWorker (Unemployed _ pos _ _ _)) = pos
-
-setPos :: XYZ -> Worker t -> Worker t
-setPos xyz (Employed i _ job rs gol tsk) = Employed i xyz job rs gol tsk
-setPos xyz (Unemployed i _ job rs rsn) = Unemployed i xyz job rs rsn
-
-workerToTile :: Job -> Status -> Antiqua.Tile CP437
-workerToTile j st =
-    let color = case st of
-                    Working -> yellow
-                    Idle -> white
-    in
-    case j of
-        Builder -> Antiqua.Tile C'B black color
-        Gatherer -> Antiqua.Tile C'G black color
-        Miner -> Antiqua.Tile C'M black color
-
-instance Demiurge.Renderable EWorker where
-    render (WorkingWorker (Employed _ pos job _ _ _)) tr =
-        let t1 = (drop3 pos, workerToTile job Working) in
-        tr <+ t1
-    render (IdleWorker (Unemployed _ pos job _ _)) tr =
-        let t1 = (drop3 pos, workerToTile job Idle) in
-        let t2 = (drop3 $ pos ~~> D'North,  Antiqua.Tile (:?) black white) in
-        tr <++ [t1, t2]
 
 
 data Schema = Schema
@@ -195,11 +101,10 @@ clampView (Viewer x y z m@(xm, ym, zm)) =
            (clamp 0 zm z)
            m
 
-updateViewer :: Viewer -> C.Controls ControlKey C.TriggerAggregate -> Viewer
+updateViewer :: Viewer -> ControlMap C.TriggerAggregate -> Viewer
 updateViewer (Viewer x y z clam) ctrls =
-    let chkPress k = C.isPressed $ C.getControl k ctrls in
-    let up = select 0 (-1) $ chkPress CK'ZUp in
-    let down = select up 1 $ chkPress CK'ZDown in
+    let up = select 0 (-1) $ C.isPressed $ from ctrls (Get :: Index 'CK'ZUp) in
+    let down = select up 1 $ C.isPressed $ from ctrls (Get :: Index 'CK'ZDown)in
     clampView $ Viewer x y (z + down) clam
 
 class Coordinate c => World w c | w -> c where
@@ -289,7 +194,7 @@ instance Drawable GameState where
 
 
 
-instance Game GameState (C.Controls ControlKey C.TriggerAggregate, Assets, Window) rng where
+instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) rng where
     runFrame (GameState v s w wks) (ctrls, _, _) g =
         let (wks', w') = updateWorkers wks w in
         let nv = updateViewer v ctrls in

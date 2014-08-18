@@ -1,7 +1,7 @@
-﻿module Main where
+﻿{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Main where
 
 import Control.Monad.Random
-import Data.Map as Map
 
 import Antiqua.Game
 import Antiqua.Sound.Audio
@@ -14,24 +14,29 @@ import Demiurge.Utils()
 import Demiurge.World
 import Demiurge.Input.ControlMap
 
-enterLoop :: IO ()
+
+
+
+instance WindowSettings where
+    width = 512
+    height = 512
+    title = "Antiqua Prime"
+
+enterLoop :: WindowSettings => IO ()
 enterLoop = do
     let cols = 32
     let rows = 32
     let layers = 10
-    win <- createWindow 512 512 "Antiqua Prime"
-    --let controls = C.Controls [C.mkTriggerAggregate [C.KeyTrigger GLFW.Key'Space]] :: C.Controls C.TriggerAggregate
-    let zUp = C.mkTriggerAggregate [C.WheelTrigger 1]
-    let zDown = C.mkTriggerAggregate [C.WheelTrigger (-1)]
-    let controls = C.Controls (Map.fromList [(CK'ZDown, zDown),
-                                             (CK'ZUp, zUp)])
+    win <- createWindow
+    let mk t = C.mkTriggerAggregate [t]
+    let ctrl = ControlMap (mk $ C.WheelTrigger 1, mk $ C.WheelTrigger (-1))
     tex <- loadTexture "../16x16.png"
     let assets = undefined :: Assets
     let state = mkState cols rows layers
 
     rng <- getStdGen
-    gs <- mkUpdater state (controls, assets, win) rng
-    loop controls win gs tex rng
+    gs <- mkUpdater state (ctrl, assets, win) rng
+    loop ctrl win gs tex rng
 
 main :: IO ()
 main = do

@@ -52,5 +52,5 @@ updateAt xx yys =
     in
     helper xx [] yys
 
-drop3 :: (a, b, c) -> (a, b)
-drop3 (x, y, _) = (x, y)
+fstsnd :: (a, b, c) -> (a, b)
+fstsnd (x, y, _) = (x, y)

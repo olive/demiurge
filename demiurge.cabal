@@ -25,10 +25,8 @@ executable demiurge
                      , TupleSections
                      , DataKinds
                      , KindSignatures
-                     , TypeOperators
-                     , PolyKinds
-                     , TypeFamilies
-                     , ConstraintKinds
+                     , NullaryTypeClasses
+                       TypeOperators
 
 
 
