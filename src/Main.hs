@@ -17,6 +17,8 @@ import Demiurge.Input.ControlMap
 
 
 
+
+
 instance WindowSettings where
     width = 512
     height = 512

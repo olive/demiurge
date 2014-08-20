@@ -1,7 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Demiurge.Common where
 
+import qualified Data.Map as Map
 import Antiqua.Data.Coordinate
+
+type a :-> b = Map.Map a b
+
 
 type XYZ = (Int,Int,Int)
 data Direction3 = D'North | D'South | D'East | D'West | D'Upward | D'Downward
@@ -35,3 +39,14 @@ rectToBorder k (Rect x y width height) = do
 
 class Same a where
     same :: a -> a -> Bool
+
+nearestDir :: XYZ -> XYZ -> Direction3
+nearestDir (x, y, _) (a, b, _)
+    | abs (x - a) > abs (y - b) =
+            if x < a
+            then D'West
+            else D'East
+    | otherwise =
+            if y < b
+            then D'North
+            else D'South

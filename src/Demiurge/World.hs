@@ -13,6 +13,7 @@ import Antiqua.Graphics.TileRenderer
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Graphics.Window
 import Antiqua.Graphics.Assets
+import Antiqua.Utils
 import qualified Antiqua.Input.Controls as C
 import Antiqua.Common
 import Antiqua.Data.Graph
@@ -24,15 +25,12 @@ import qualified Demiurge.Tile as T
 import Demiurge.Common
 import qualified Demiurge.Data.Array3d as A3D
 import qualified Demiurge.Drawing.Renderable as Demiurge
-import Demiurge.Utils
+import qualified Demiurge.Entity as E
 import Demiurge.Worker
+import Demiurge.Plan
 
-
-
-shiftTask :: Worker 'Working -> EWorker
-shiftTask = undefined
-
-
+forbid :: String -> TaskPermission
+forbid = TaskForbidden . Message
 updateWorkers :: [EWorker] -> Terrain -> ([EWorker], Terrain)
 updateWorkers wks ter =
     upOne [] wks ter
@@ -46,31 +44,43 @@ processWorker (WorkingWorker wk) _ t =
     let tsk = getTask wk in
     case allowed tsk wk t of
         TaskPermitted -> perform tsk wk t
-        TaskBlocked _ -> (pack $ unemploy "Blocked" wk, t)
+        TaskBlocked _ -> (pack $ unemploy (Message "Blocked") wk, t)
         TaskForbidden rsn -> (pack $ unemploy rsn wk, t)
 processWorker wk _ t = (wk, t)
+
+shiftTask :: Worker 'Working -> EWorker
+shiftTask = undefined
+
+goalToTasks :: Goal -> EWorker -> Terrain -> NonEmpty Task
+goalToTasks (Build xyz) wk _ =
+    let wPos = getPos wk in
+    let adjPos = xyz ~~> nearestDir wPos xyz in
+    (Navigate wPos adjPos, [Place xyz])
 
 
 allowed :: Task -> Worker 'Working -> Terrain -> TaskPermission
 allowed Drop wk _
-    | (isJust . getResource) wk = TaskPermitted
-    | otherwise = TaskForbidden "Has no resource to drop"
+    | (isJust . getResource . pack) wk = TaskPermitted
+    | otherwise = forbid "Has no resource to drop"
 allowed Gather wk t
-    | (isJust . getResource) wk = TaskForbidden "Inventory is full"
-    | not $ hasResource t ((getPos . pack) wk) T.Stone = TaskForbidden "No resource here to pick up"
+    | (isJust . getResource . pack) wk = forbid "Inventory is full"
+    | not $ hasResource t ((getPos . pack) wk) T.Stone = forbid "No resource here to pick up"
     | otherwise = TaskPermitted
 allowed (Navigate _ _) _ _ = TaskPermitted
 allowed (Path (x, _)) _ t
-    | (not . isWalkable t) x = TaskForbidden "Can't walk there"
+    | (not . isWalkable t) x = forbid "Can't walk there"
+    | otherwise = TaskPermitted
+allowed (Place xyz) _ t
+    | isWholeSolid t xyz = forbid "Somethign is already build there"
     | otherwise = TaskPermitted
 
 perform :: Task -> Worker 'Working -> Terrain -> (EWorker, Terrain)
 perform Drop wk t =
-    let wk' = shiftTask $ spendResource wk in
+    let wk' = (shiftTask . spendResource) wk in
     let t' = addResource t (getPos wk') T.Stone in
     (wk', t')
 perform Gather wk t =
-    let wk' = shiftTask $ giveResource T.Stone wk in
+    let wk' = (shiftTask . giveResource T.Stone) wk in
     let t' = takeResource t (getPos wk') T.Stone in
     (wk', t')
 perform (Navigate src dst) wk t =
@@ -84,10 +94,11 @@ perform (Path (x, y:yx)) wk t =
     let wk' = mapTask (\_ -> Path (y, yx)) $ setPos x wk in
     (pack wk', t)
 perform (Path (x, [])) wk t =
-    let wk' = unemploy "Task Finished" $ setPos x wk in
+    let wk' = unemploy (Message "Task Finished") $ setPos x wk in
     (pack wk', t)
-
-
+perform (Place xyz) wk t =
+    let t' = modTile t xyz (\_ -> T.Tile T.WholeSolid []) in
+    (pack wk, t')
 
 data Schema = Schema
 type Terrain = A3D.Array3d T.Tile
@@ -103,8 +114,8 @@ clampView (Viewer x y z m@(xm, ym, zm)) =
 
 updateViewer :: Viewer -> ControlMap C.TriggerAggregate -> Viewer
 updateViewer (Viewer x y z clam) ctrls =
-    let up = select 0 (-1) $ C.isPressed $ from ctrls (Get :: Index 'CK'ZUp) in
-    let down = select up 1 $ C.isPressed $ from ctrls (Get :: Index 'CK'ZDown)in
+    let up = (select 0 (-1) . C.isPressed . from ctrls) (Get :: Index 'CK'ZUp) in
+    let down = (select up 1 . C.isPressed . from ctrls) (Get :: Index 'CK'ZDown)in
     clampView $ Viewer x y (z + down) clam
 
 class Coordinate c => World w c | w -> c where
@@ -152,13 +163,13 @@ instance World (A3D.Array3d T.Tile) XYZ where
         else updated
     isStandable arr xy = any id $ do
         t <- getTile arr xy
-        return $ T.isStandable t $ getTile arr (xy ~~> D'Downward)
+        (return . T.isStandable t . getTile arr) (xy ~~> D'Downward)
 
     pfind arr src dst =
         case D.pfind arr src dst of
             Just (x:xs) -> Right (x, xs)
             Just [] -> Right (dst, [])
-            Nothing -> Left ("No Path from " ++ show src ++ show dst)
+            Nothing -> (Left . Message) ("No Path from " ++ show src ++ show dst)
 
 
 instance Graph (A3D.Array3d T.Tile) XYZ  where
@@ -212,5 +223,5 @@ mkState cols rows layers =
          in
          T.Tile tt []
     in
-    let wk = Employed 0 (0,0,1) Builder Nothing undefined (Navigate (0,0,1) (10,10,1), []) in
+    let wk = Employed (E.Entity 0 (0,0,1) E.Builder Nothing) undefined (Navigate (0,0,1) (10,10,1), []) in
     GameState view Schema tiles [pack wk]

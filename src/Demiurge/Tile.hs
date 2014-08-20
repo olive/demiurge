@@ -13,7 +13,7 @@ module Demiurge.Tile(
     emptyMs
 ) where
 import qualified Antiqua.Graphics.Tile as T
-import Antiqua.Graphics.Color
+import Antiqua.Graphics.Colors
 import Antiqua.Data.CP437
 data Resource = Stone deriving Eq
 
