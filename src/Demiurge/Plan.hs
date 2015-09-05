@@ -10,9 +10,10 @@ data Plan where
     Plan :: [Int]               -- all major ids associated with this plan
          -> [Int]               -- completed major ids
          -> (E.Job :-> [WGoal]) -- major goals
-         -> (E.Job -> Goal)     -- minor goals
+         -> (E.Job -> WGoal)    -- minor goals
          -> Maybe Plan          -- successor
          -> Plan
+data Schema = Schema [Plan]
 
 getMajor :: Plan -> E.Job :-> [WGoal]
 getMajor (Plan _ _ mp _ _) = mp
@@ -28,9 +29,14 @@ getGoals :: Plan -> E.Job -> [WGoal]
 getGoals pl j = Map.findWithDefault ([getMinor pl j]) j (getMajor pl)
 
 isComplete :: Plan -> Bool
-isComplete (Plan mp _ _) = Map.null mp
+isComplete (Plan _ _ mp _ _) = Map.null mp
 
 distribute :: Plan -> Worker 'Idle -> Worker 'Working
 distribute pl wk =
-    let j = (E.getJob . getEntity . pack) wk in
-    undefined -- let E.Jobs = getGoals
+    let goal = (E.getJob . getEntity . pack) wk in
+    error "unimplemented" -- let E.Jobs = getGoals
+
+reinsert :: WGoal -> Plan -> Plan
+reinsert (Minor _) p = p
+reinsert mj@(Major j _ _) (Plan all' left maj mn suc)  =
+    Plan all' left (Map.insertWith (++) j [mj] maj) mn suc

@@ -6,6 +6,7 @@ import Control.Applicative((<$>))
 import Data.Foldable(any)
 import Data.Maybe
 import Control.Monad (join)
+import qualified Data.Map as Map
 
 import Antiqua.Game
 import Antiqua.Graphics.Renderer
@@ -29,27 +30,34 @@ import qualified Demiurge.Entity as E
 import Demiurge.Worker
 import Demiurge.Plan
 
+import Debug.Trace
+
 forbid :: String -> TaskPermission
 forbid = TaskForbidden . Message
-updateWorkers :: [EWorker] -> Terrain -> ([EWorker], Terrain)
-updateWorkers wks ter =
-    upOne [] wks ter
-    where upOne up (x:left) t =
-              let (wk', t') = processWorker x (up ++ left) t in
-              upOne (wk':up) left t'
-          upOne up [] t = (up, t)
+updateWorkers :: [EWorker] -> Plan -> Terrain -> ([EWorker], Plan, Terrain)
+updateWorkers wks p ter =
+    upOne [] wks p ter
+    where upOne up (x:left) p t =
+              let (wk', p', t') = processWorker x p (up ++ left) t in
+              upOne (wk':up) left p' t'
+          upOne up [] p t = (up, p, t)
 
-processWorker :: EWorker -> [EWorker] -> Terrain -> (EWorker, Terrain)
-processWorker (WorkingWorker wk) _ t =
+processWorker :: EWorker -> Plan -> [EWorker] -> Terrain -> (EWorker, Plan, Terrain)
+processWorker (WorkingWorker wk) p _ t =
     let tsk = getTask wk in
     case allowed tsk wk t of
-        TaskPermitted -> perform tsk wk t
-        TaskBlocked _ -> (pack $ unemploy (Message "Blocked") wk, t)
-        TaskForbidden rsn -> (pack $ unemploy rsn wk, t)
-processWorker wk _ t = (wk, t)
+        TaskPermitted -> perform tsk wk p t
+        TaskBlocked _ ->
+            let (wk', p') = unemploy (Message "Blocked") wk p in
+            (pack $ wk', p', t)
+        TaskForbidden rsn ->
+            let (wk', p') = unemploy rsn wk p in
+            (pack $ wk', p', t)
+processWorker (IdleWorker wk) plan _ t = (pack wk, plan, t)
 
-shiftTask :: Worker 'Working -> EWorker
+shiftTask ::  Plan -> Worker 'Working -> (EWorker, Plan)
 shiftTask = undefined
+--do not use unemploy for finished tasks
 
 goalToTasks :: Goal -> EWorker -> Terrain -> NonEmpty Task
 goalToTasks (Build xyz) wk _ =
@@ -74,35 +82,45 @@ allowed (Place xyz) _ t
     | isWholeSolid t xyz = forbid "Somethign is already build there"
     | otherwise = TaskPermitted
 
-perform :: Task -> Worker 'Working -> Terrain -> (EWorker, Terrain)
-perform Drop wk t =
-    let wk' = (shiftTask . spendResource) wk in
+perform :: Task -> Worker 'Working -> Plan -> Terrain -> (EWorker, Plan, Terrain)
+perform Drop wk p t =
+    let (wk', p') = (shiftTask p . spendResource) wk in
     let t' = addResource t (getPos wk') T.Stone in
-    (wk', t')
-perform Gather wk t =
-    let wk' = (shiftTask . giveResource T.Stone) wk in
+    (wk', p, t')
+perform Gather wk p t =
+    let (wk', p') = (shiftTask p . giveResource T.Stone) wk in
     let t' = takeResource t (getPos wk') T.Stone in
-    (wk', t')
-perform (Navigate src dst) wk t =
+    (wk', p', t')
+perform (Navigate src dst) wk p t =
     let path = pfind t src dst in
-    let wk' = case path of
-                  Left reason -> pack $ unemploy reason wk
-                  Right p -> pack $ mapTask (\_ -> Path p) wk
+    let (wk', p') = case path of
+                        Left reason ->
+                            let (wk'', p'') = unemploy reason wk p in
+                            (pack wk'', p'')
+                        Right pth -> (pack $ mapTask (\_ -> Path pth) wk, p)
     in
-    (wk', t)
-perform (Path (x, y:yx)) wk t =
+    (wk', p, t)
+perform (Path (x, y:yx)) wk p t =
     let wk' = mapTask (\_ -> Path (y, yx)) $ setPos x wk in
-    (pack wk', t)
-perform (Path (x, [])) wk t =
-    let wk' = unemploy (Message "Task Finished") $ setPos x wk in
-    (pack wk', t)
-perform (Place xyz) wk t =
+    (pack wk', p, t)
+perform (Path (x, [])) wk p t =
+    let (wk', p') = unemploy (Message "Task Finished") (setPos x wk) p in
+    (pack wk', p', t)
+perform (Place xyz) wk p t =
     let t' = modTile t xyz (\_ -> T.Tile T.WholeSolid []) in
-    (pack wk, t')
+    (pack wk, p, t')
 
-data Schema = Schema
+
+unemploy :: Reason -> Worker 'Working -> Plan -> (Worker 'Idle, Plan)
+unemploy rsn (Employed e maj@(Major j i g) _) p =
+    let wk = traceShow rsn $ Unemployed e rsn in
+    (wk, reinsert maj p)
+unemploy rsn (Employed e min@(Minor g) _) p =
+    let wk = traceShow rsn $ Unemployed e rsn in
+    (wk, reinsert min p)
+
 type Terrain = A3D.Array3d T.Tile
-data GameState = GameState Viewer Schema Terrain [EWorker]
+data GameState = GameState Plan Viewer Terrain [EWorker]
 data Viewer = Viewer Int Int Int (Int,Int,Int)
 
 clampView :: Viewer -> Viewer
@@ -187,8 +205,9 @@ filterOffscreen (Viewer _ _ z _) wks =
     where onScreen w =
               let (_, _, wz) = getPos w in
               wz == z
+
 instance Drawable GameState where
-    draw (GameState v _ world wks) tex = do
+    draw (GameState _ v world wks) tex = do
         let (Viewer _ _ level _) = v
         let (Just layer) = A3D.getLayer world level
         let below = A3D.getLayer world (level-1)
@@ -206,10 +225,10 @@ instance Drawable GameState where
 
 
 instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) rng where
-    runFrame (GameState v s w wks) (ctrls, _, _) g =
-        let (wks', w') = updateWorkers wks w in
+    runFrame (GameState p v w wks) (ctrls, _, _) g =
+        let (wks', p', w') = updateWorkers wks p w in
         let nv = updateViewer v ctrls in
-        ((GameState nv s w' wks'), g)
+        ((GameState p' nv w' wks'), g)
 
 
 mkState :: Int -> Int -> Int -> GameState
@@ -224,4 +243,5 @@ mkState cols rows layers =
          T.Tile tt []
     in
     let wk = Employed (E.Entity 0 (0,0,1) E.Builder Nothing) undefined (Navigate (0,0,1) (10,10,1), []) in
-    GameState view Schema tiles [pack wk]
+    let plan = Plan [] [] (Map.empty) (\_ -> Minor (Build (0,0,0))) Nothing in
+    GameState plan view tiles [pack wk]

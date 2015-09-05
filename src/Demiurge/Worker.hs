@@ -13,8 +13,8 @@ import qualified Demiurge.Tile as T
 import Demiurge.Utils
 import qualified Demiurge.Entity as E
 
-import Debug.Trace
 
+data WGoal = Major E.Job Int Goal | Minor Goal
 
 data Task = Drop
           | Gather
@@ -23,7 +23,6 @@ data Task = Drop
           | Place XYZ
 
 data Goal = Build XYZ
-data WGoal = Major Int Goal | Minor Goal
 
 data Reason = Message String | GoalFail String Int deriving Show
 
@@ -64,9 +63,6 @@ getEntity :: EWorker -> E.Entity
 getEntity (WorkingWorker (Employed e _ _)) = e
 getEntity (IdleWorker (Unemployed e _)) = e
 
-unemploy :: Reason -> Worker 'Working -> Worker 'Idle
-unemploy rsn (Employed e _ _) =
-    traceShow rsn $ Unemployed e rsn
 
 getResource :: EWorker -> Maybe T.Resource
 getResource = E.getResource . getEntity
